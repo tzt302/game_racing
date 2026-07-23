@@ -38,9 +38,10 @@ AI_PROFILES = [
 
 
 class GameLoop:
-    def __init__(self, screen, clock):
+    def __init__(self, screen, clock, updater=None):
         self.screen = screen
         self.clock = clock
+        self.updater = updater
         font_name = "microsoftyahei"
         self.font_s = pygame.font.SysFont(font_name, 14, bold=True)
         self.font_m = pygame.font.SysFont(font_name, 22, bold=True)
@@ -93,6 +94,7 @@ class GameLoop:
         self._outside_track_limits = False
         self.penalty_message_time = 0.0
         self.penalty_message = ""
+        self.wrong_way_time = 0.0
         self._load_track()
 
     def run(self):
@@ -187,6 +189,7 @@ class GameLoop:
         self._outside_track_limits = False
         self.penalty_message_time = 0.0
         self.penalty_message = ""
+        self.wrong_way_time = 0.0
 
     def _place_on_grid(self, vehicle, grid_position):
         """Place a car on a two-column, five-row starting grid."""
@@ -356,7 +359,8 @@ class GameLoop:
         self.lights_out_flash = max(0.0, self.lights_out_flash - dt)
         player_surface, _, _ = self.track.surface_at(self.player.x, self.player.y)
         self.player.set_surface(player_surface)
-        self.player.update(dt, self.input.steer, self.input.throttle, self.input.brake)
+        throttle = 0.0 if self.wrong_way_time > 0.0 else self.input.throttle
+        self.player.update(dt, self.input.steer, throttle, self.input.brake)
         self._update_track_limits()
         self._apply_world_limits(self.player)
 
@@ -370,6 +374,7 @@ class GameLoop:
             self._resolve_car_contacts(all_cars)
 
         pi, _ = self.track.find_nearest(self.player.x, self.player.y)
+        self._update_wrong_way(pi, dt)
         self.player_progress = pi / len(self.track.center_points)
         if self.mode == "RACE VS AI":
             for ai in self.ai_cars:
@@ -448,6 +453,37 @@ class GameLoop:
                         f"TRACK LIMITS WARNING {self.track_limit_warnings}/3"
                     )
         self._outside_track_limits = outside
+
+    def _update_wrong_way(self, index, dt):
+        track_heading = self.track.center_points[index][2]
+        alignment = math.cos(self.player.heading - track_heading)
+        wrong_direction = alignment < cfg.WRONG_WAY_ALIGNMENT
+        active = (
+            self.player.speed >= cfg.WRONG_WAY_MIN_SPEED_MS
+            or self.wrong_way_time > 0.0
+        )
+        if wrong_direction and active:
+            self.wrong_way_time += dt
+            self.player.speed = max(0.0, self.player.speed - 7.5 * dt)
+            if self.wrong_way_time >= cfg.WRONG_WAY_WARNING_SECONDS:
+                self.penalty_message_time = 0.35
+                self.penalty_message = "WRONG WAY"
+            if self.wrong_way_time >= cfg.WRONG_WAY_RESET_SECONDS:
+                self._reset_wrong_way(index)
+            return
+        self.wrong_way_time = max(0.0, self.wrong_way_time - dt * 2.5)
+
+    def _reset_wrong_way(self, index):
+        point = self.track.center_points[index]
+        self.player.reset(point[0], point[1], point[2])
+        self.last_player_idx = index
+        self._outside_track_limits = False
+        self.wrong_way_time = 0.0
+        self.live_delta = None
+        if self.mode == "TIME TRIAL":
+            self.current_lap_valid = False
+        self.penalty_message_time = 2.4
+        self.penalty_message = "WRONG WAY - RESET"
 
     def _commit_player_lap(self):
         """Store only valid completed laps and discard invalid time-trial laps."""
@@ -783,7 +819,7 @@ class GameLoop:
             self.screen.blit(panel, (cfg.WINDOW_WIDTH // 2 - 255, 92))
             self._center_text(
                 self.screen,
-                "Follow CYAN • Brake on RED • F1 opens guide",
+                "Follow CYAN ? Brake on RED ? F1 opens guide",
                 103,
                 self.font_s,
                 cfg.WHITE,
@@ -1217,25 +1253,101 @@ class GameLoop:
             )
 
     def _draw_track(self):
-        points = [self._world_to_screen(p[0], p[1]) for p in self.track.center_points]
         scale = VIEW_RANGES[self.view_range_index]["scale"]
-        outer_width = int(
-            (self.track.width + 2 * (cfg.KERB_WIDTH + cfg.RUNOFF_WIDTH)) * scale
-        )
-        kerb_width = int((self.track.width + 2 * cfg.KERB_WIDTH) * scale)
-        road_width = int(self.track.width * scale)
-        pygame.draw.lines(self.screen, cfg.TRACK_BORDER, True, points, outer_width + 8)
-        pygame.draw.lines(self.screen, cfg.RUNOFF_COLOR, True, points, outer_width)
-        pygame.draw.lines(self.screen, cfg.KERB_WHITE, True, points, kerb_width)
-        pygame.draw.lines(self.screen, cfg.TRACK_COLOR, True, points, road_width)
+        road_half = self.track.width * 0.5
+        kerb_half = road_half + cfg.KERB_WIDTH
+        runoff_half = kerb_half + cfg.RUNOFF_WIDTH
+        border_half = runoff_half + max(0.35, 4.0 / scale)
+        centers = [
+            self._world_to_screen(point[0], point[1])
+            for point in self.track.center_points
+        ]
+        margin = int(border_half * scale) + 12
+        viewport = self.screen.get_rect().inflate(margin * 2, margin * 2)
+        count = len(centers)
+        visible_segments = [
+            index
+            for index in range(count)
+            if viewport.collidepoint(centers[index])
+            or viewport.collidepoint(centers[(index + 1) % count])
+        ]
 
-        left = [self._world_to_screen(*p) for p in self.track.left_edges]
-        right = [self._world_to_screen(*p) for p in self.track.right_edges]
-        for edge in (left, right):
-            for i in range(0, len(edge), 4):
-                j = (i + 4) % len(edge)
-                color = cfg.KERB_RED if (i // 4) % 2 == 0 else cfg.KERB_WHITE
-                pygame.draw.line(self.screen, color, edge[i], edge[j], max(4, int(cfg.KERB_WIDTH * scale)))
+        # Thick polyline joins change shape as their angle is rasterised,
+        # making the circuit appear to breathe while the chase camera rotates.
+        # Fixed-width segment quads preserve the same cross-section every frame.
+        border_left, border_right = self._track_band_edges(border_half)
+        runoff_left, runoff_right = self._track_band_edges(runoff_half)
+        kerb_left, kerb_right = self._track_band_edges(kerb_half)
+        road_left, road_right = self._track_band_edges(road_half)
+        for left, right, color in (
+            (border_left, border_right, cfg.TRACK_BORDER),
+            (runoff_left, runoff_right, cfg.RUNOFF_COLOR),
+            (kerb_left, kerb_right, cfg.KERB_WHITE),
+            (road_left, road_right, cfg.TRACK_COLOR),
+        ):
+            self._draw_track_quads(left, right, visible_segments, color)
+
+        for index in visible_segments:
+            next_index = (index + 1) % count
+            color = (
+                cfg.KERB_RED
+                if (index // 4) % 2 == 0
+                else cfg.KERB_WHITE
+            )
+            pygame.draw.polygon(
+                self.screen,
+                color,
+                [
+                    road_left[index],
+                    road_left[next_index],
+                    kerb_left[next_index],
+                    kerb_left[index],
+                ],
+            )
+            pygame.draw.polygon(
+                self.screen,
+                color,
+                [
+                    road_right[index],
+                    road_right[next_index],
+                    kerb_right[next_index],
+                    kerb_right[index],
+                ],
+            )
+
+    def _track_band_edges(self, half_width):
+        left = []
+        right = []
+        for x, y, heading, _ in self.track.center_points:
+            normal_x, normal_y = -math.sin(heading), math.cos(heading)
+            left.append(
+                self._world_to_screen(
+                    x + normal_x * half_width,
+                    y + normal_y * half_width,
+                )
+            )
+            right.append(
+                self._world_to_screen(
+                    x - normal_x * half_width,
+                    y - normal_y * half_width,
+                )
+            )
+        return left, right
+
+    def _draw_track_quads(self, left, right, visible_segments, color):
+        count = len(left)
+        for index in visible_segments:
+            next_index = (index + 1) % count
+            pygame.draw.polygon(
+                self.screen,
+                color,
+                [
+                    left[index],
+                    left[next_index],
+                    right[next_index],
+                    right[index],
+                ],
+            )
 
     def _draw_racing_line(self):
         line = [self._world_to_screen(*p) for p in self.track.racing_line]
@@ -1378,12 +1490,12 @@ class GameLoop:
         pygame.draw.circle(self.screen, self.track.accent, (1080, 90), 300, 2)
         pygame.draw.circle(self.screen, cfg.DARK_GRAY, (1080, 90), 245, 1)
         self._text(self.screen, 70, 55, "RACING LINE", self.font_xl, cfg.WHITE)
-        self._text(self.screen, 73, 126, "PRO  •  GRAND PRIX EDITION", self.font_m, self.track.accent)
+        self._text(self.screen, 73, 126, "PRO  ?  GRAND PRIX EDITION", self.font_m, self.track.accent)
         self._text(
             self.screen,
             73,
             165,
-            "Five circuits from 2025 qualifying telemetry • progressive F1 handling",
+            "Five circuits from 2025 qualifying telemetry ? progressive F1 handling",
             self.font_s,
             cfg.HUD_LABEL,
         )
@@ -1420,7 +1532,7 @@ class GameLoop:
         self._draw_track_preview(pygame.Rect(690, 225, 510, 360))
         self._center_text(
             self.screen,
-            f"{self.track.total_length / 1000:.3f} KM  •  {self.track.description}",
+            f"{self.track.total_length / 1000:.3f} KM  ?  {self.track.description}",
             610,
             self.font_s,
             cfg.HUD_LABEL,
@@ -1430,10 +1542,28 @@ class GameLoop:
             self.screen,
             70,
             cfg.WINDOW_HEIGHT - 40,
-            "↑↓ SELECT    ←→ CHANGE    ENTER CONFIRM    H GUIDE",
+            "?? SELECT    ?? CHANGE    ENTER CONFIRM    H GUIDE",
             self.font_s,
             cfg.HUD_LABEL,
         )
+        if self.updater and self.updater.status_text:
+            status_color = (
+                self.track.accent
+                if self.updater.ready_version
+                else cfg.HUD_LABEL
+            )
+            status_surface = self.font_s.render(
+                self.updater.status_text,
+                True,
+                status_color,
+            )
+            self.screen.blit(
+                status_surface,
+                (
+                    cfg.WINDOW_WIDTH - status_surface.get_width() - 28,
+                    cfg.WINDOW_HEIGHT - 40,
+                ),
+            )
 
     def _draw_track_preview(self, rect):
         xs = [p[0] for p in self.track.center_points]
@@ -1452,13 +1582,13 @@ class GameLoop:
         self._center_text(self.screen, "DRIVER BRIEFING", 48, self.font_xl, cfg.WHITE)
         self._center_text(
             self.screen,
-            f"{self.track.name}  •  {MODES[self.mode_index]}",
+            f"{self.track.name}  ?  {MODES[self.mode_index]}",
             126,
             self.font_m,
             self.track.accent,
         )
         cards = [
-            ("1  CONTROL", "W / ↑ throttle     S / ↓ brake     A D / ← → steer\nController: left stick + linear LT / RT     - / + changes view range"),
+            ("1  CONTROL", "W / ? throttle     S / ? brake     A D / ? ? steer\nController: left stick + linear LT / RT     - / + changes view range"),
             ("2  READ THE LINE", "CYAN = full throttle     YELLOW = lift / prepare\nRED = brake now; target speed is shown at the marker"),
             ("3  USE THE ROAD", "Red-white kerb is driveable but unsettles the car.\nRunoff and grass reduce grip; barriers return the car safely."),
             ("4  DRIVE SMOOTHLY", "Steering lock reduces with speed. Brake in a straight line,\nrelease the brake, then turn toward the apex."),

@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(1, str(ROOT / "src"))
 
 import config as cfg
+import pygame
 from physics.vehicle import Vehicle
 from game.input import InputHandler
 from game.loop import AI_PROFILES, VIEW_RANGES, GameLoop
@@ -362,6 +363,80 @@ class RaceFormatTests(unittest.TestCase):
             (entry["score"] for entry in entries), reverse=True
         ))
         self.assertEqual(sum(entry["player"] for entry in entries), 1)
+
+    def test_wrong_way_driving_is_reset_in_the_forward_direction(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("monza")
+        game.player = Vehicle()
+        game.mode = "TIME TRIAL"
+        game.current_lap_valid = True
+        game.live_delta = 0.25
+        game._outside_track_limits = False
+        game.penalty_message_time = 0.0
+        game.penalty_message = ""
+        game.wrong_way_time = cfg.WRONG_WAY_RESET_SECONDS - 0.1
+        index = 120
+        x, y, heading, _ = game.track.center_points[index]
+        game.player.reset(x, y, heading + math.pi)
+        game.player.speed = 30.0
+
+        game._update_wrong_way(index, 0.2)
+
+        self.assertEqual(game.player.speed, 0.0)
+        self.assertAlmostEqual(game.player.heading, heading)
+        self.assertFalse(game.current_lap_valid)
+        self.assertIsNone(game.live_delta)
+        self.assertEqual(game.penalty_message, "WRONG WAY - RESET")
+
+    def test_brief_wrong_way_heading_recovers_without_reset(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("spa")
+        game.player = Vehicle()
+        game.mode = "RACE VS AI"
+        game.wrong_way_time = cfg.WRONG_WAY_WARNING_SECONDS + 0.1
+        game.penalty_message_time = 0.0
+        game.penalty_message = ""
+        index = 80
+        x, y, heading, _ = game.track.center_points[index]
+        game.player.reset(x, y, heading)
+        game.player.speed = 25.0
+
+        game._update_wrong_way(index, 0.2)
+
+        self.assertLess(
+            game.wrong_way_time,
+            cfg.WRONG_WAY_WARNING_SECONDS,
+        )
+        self.assertAlmostEqual(game.player.heading, heading)
+
+    def test_track_cross_section_does_not_change_with_camera_rotation(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("silverstone")
+        game.player = Vehicle()
+        game.view_range_index = 1
+        index = 260
+        half_width = game.track.width * 0.5
+        widths = []
+        for camera_heading in (0.0, 0.7, 1.9, 3.1):
+            game.player.heading = camera_heading
+            left, right = game._track_band_edges(half_width)
+            widths.append(math.dist(left[index], right[index]))
+
+        expected = game.track.width * VIEW_RANGES[1]["scale"]
+        for width in widths:
+            self.assertAlmostEqual(width, expected, delta=2.0)
+        self.assertLess(max(widths) - min(widths), 2.0)
+
+    def test_complete_race_frame_renders(self):
+        pygame.init()
+        try:
+            screen = pygame.Surface((cfg.WINDOW_WIDTH, cfg.WINDOW_HEIGHT))
+            game = GameLoop(screen, pygame.time.Clock())
+            game._reset_race()
+            game.state = "race"
+            game._render()
+        finally:
+            pygame.quit()
 
 
 if __name__ == "__main__":

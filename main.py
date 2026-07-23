@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Racing Line Pro — telemetry-driven 2.5D formula racing game."""
+"""Racing Line Pro ? telemetry-driven 2.5D formula racing game."""
 
 import os
 import sys
@@ -24,8 +24,11 @@ try:
 
     import config as cfg
     from game.loop import GameLoop
+    from updater import AutoUpdater
 
     def main():
+        updater = AutoUpdater(cfg.VERSION, sys.executable)
+        updater.start()
         pygame.init()
         pygame.joystick.init()
         try:
@@ -37,10 +40,11 @@ try:
             )
             pygame.display.set_caption(f"Racing Line Pro v{cfg.VERSION}")
             clock = pygame.time.Clock()
-            game = GameLoop(screen, clock)
+            game = GameLoop(screen, clock, updater=updater)
             game.run()
         finally:
             pygame.quit()
+        updater.apply_on_exit()
 
     if __name__ == "__main__":
         main()

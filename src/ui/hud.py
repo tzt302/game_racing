@@ -24,7 +24,7 @@ class HUD:
         self._label(surf, 205, height - 80, "STEERING")
         cx, cy = 262, height - 43
         pygame.draw.line(surf, cfg.DARK_GRAY, (220, cy), (304, cy), 5)
-        steer_norm = vehicle.steer_angle / max(cfg.STEER_LOCK_LOW, 0.01)
+        steer_norm = vehicle.steer_angle / max(cfg.STEER_LOCK, 0.01)
         marker = int(cx + max(-1, min(1, steer_norm)) * 40)
         pygame.draw.circle(surf, track.accent, (marker, cy), 7)
 
@@ -73,7 +73,7 @@ class HUD:
             surf,
             28,
             51,
-            f"{track.country}  •  {track.total_length / 1000:.3f} KM  •  {mode}",
+            f"{track.country}  ?  {track.total_length / 1000:.3f} KM  ?  {mode}",
             self.fs,
             cfg.HUD_LABEL,
         )
@@ -112,7 +112,7 @@ class HUD:
             status = timing["sector_status"][index]
             label = f"S{index + 1}"
             if timing["current_sector"] == index + 1 and value is None:
-                label += " •"
+                label += " ?"
             self._text(surf, sector_x, 24, label, self.fs, colors.get(status, cfg.HUD_LABEL))
             self._text(
                 surf,
