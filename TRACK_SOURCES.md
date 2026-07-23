@@ -32,6 +32,16 @@ Public circuit diagrams were used as a visual cross-check:
 
 ## Audio
 
+Version 2.4.0 removes all runtime sound effects. Audio recordings remain only
+as archived development material and are not included in the packaged game.
+
+An unpublished V8 audio experiment used a short excerpt from the user-selected
+[engine comparison video](https://www.bilibili.com/video/BV16Q4y1n7hm/) to
+build six loop-safe RPM layers for local evaluation. The uploader does not
+state a reusable license or identify the original YouTube recording, so these
+assets must not be included in a public release without permission. Details
+are recorded in `assets/audio/source/V8_SOURCE_NOTICE.md`.
+
 Version 2.3.2 adds the real Formula 1 field recording
 [F1 BR 06 Engine Starts 4.wav](https://freesound.org/people/rfhache/sounds/44765/)
 by **rfhache**, licensed under

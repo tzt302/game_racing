@@ -11,3 +11,7 @@ build/
 raceline_stdout.log
 raceline_stderr.log
 raceline_error.log
+training/runs/
+training/checkpoints/
+training/exports/*.npz
+training/exports/*.json

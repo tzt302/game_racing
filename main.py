@@ -35,7 +35,7 @@ try:
             screen = pygame.display.set_mode(
                 (cfg.WINDOW_WIDTH, cfg.WINDOW_HEIGHT), flags
             )
-            pygame.display.set_caption("Racing Line Pro")
+            pygame.display.set_caption(f"Racing Line Pro v{cfg.VERSION}")
             clock = pygame.time.Clock()
             game = GameLoop(screen, clock)
             game.run()

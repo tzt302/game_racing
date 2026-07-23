@@ -122,37 +122,27 @@ class HUD:
                 self.fs,
                 cfg.WHITE,
             )
-        self._text(surf, x + 318, 24, "PERSONAL BEST", self.fs, cfg.HUD_LABEL)
+        self._text(surf, x + 368, 24, "PERSONAL BEST", self.fs, cfg.HUD_LABEL)
         self._text(
             surf,
-            x + 318,
+            x + 368,
             46,
             self._format_lap(timing["personal_best_lap"]),
-            self.fs,
-            cfg.WHITE,
-        )
-        fastest = timing.get("fastest_driver", "---")
-        self._text(surf, x + 458, 24, f"FASTEST {fastest}", self.fs, track.accent)
-        self._text(
-            surf,
-            x + 458,
-            46,
-            self._format_lap(timing["session_best_lap"]),
             self.fs,
             cfg.WHITE,
         )
 
     def _draw_delta(self, surf, timing, track):
         delta = timing.get("delta")
-        if delta is None:
-            return
         x, y, width, height = 522, 88, 236, 58
         panel = pygame.Surface((width, height), pygame.SRCALPHA)
         panel.fill((5, 8, 11, 220))
         surf.blit(panel, (x, y))
         pygame.draw.rect(surf, track.accent, (x, y, width, height), 2, border_radius=5)
-        target = timing.get("delta_target") or "FASTEST"
-        self._text(surf, x + 12, y + 7, f"DELTA TO {target}", self.fs, cfg.HUD_LABEL)
+        self._text(surf, x + 12, y + 7, "DELTA TO PERSONAL BEST", self.fs, cfg.HUD_LABEL)
+        if delta is None:
+            self._text(surf, x + 12, y + 27, "--.---", self.fm, cfg.HUD_LABEL)
+            return
         color = (42, 220, 112) if delta <= 0.0 else (255, 88, 72)
         self._text(surf, x + 12, y + 27, f"{delta:+.3f}", self.fm, color)
 

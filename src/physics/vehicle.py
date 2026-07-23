@@ -69,18 +69,40 @@ class Vehicle:
         surface = self.SURFACE[self.surface]
         speed_ratio = _clamp(self.speed / cfg.MAX_SPEED_MS, 0.0, 1.0)
 
-        # Progressive steering input removes the keyboard's abrupt full-lock
-        # behaviour.  Available lock drops smoothly as aerodynamic speed rises.
-        shaped = math.copysign(abs(steer_input) ** cfg.STEER_INPUT_EXPONENT, steer_input)
-        lock_blend = speed_ratio ** 0.72
-        max_lock = cfg.STEER_LOCK_LOW + (cfg.STEER_LOCK_HIGH - cfg.STEER_LOCK_LOW) * lock_blend
-        target_steer = shaped * max_lock
-        response = cfg.STEER_RESPONSE_LOW + (
-            cfg.STEER_RESPONSE_HIGH - cfg.STEER_RESPONSE_LOW
+        # Progressive input requests a fraction of the currently available
+        # lateral acceleration. The road-wheel angle is then derived from the
+        # bicycle geometry, preserving full mechanical lock only at low speed.
+        shaped = math.copysign(
+            math.sin(abs(steer_input) * math.pi * 0.5) ** cfg.STEER_INPUT_EXPONENT,
+            steer_input,
+        )
+        base_lateral_limit = self.get_lateral_grip_limit(0.0, 0.0)
+        control_speed = max(self.speed, cfg.STEER_LOW_SPEED_BLEND_MS)
+        requested_accel = shaped * base_lateral_limit * cfg.STEER_G_DEMAND
+        effective_wheelbase = (
+            cfg.WHEELBASE + cfg.UNDERSTEER_GRADIENT * self.speed * self.speed
+        )
+        target_steer = math.atan(
+            requested_accel * effective_wheelbase / (control_speed * control_speed)
+        )
+        low_speed_blend = 1.0 - _clamp(
+            self.speed / cfg.STEER_LOW_SPEED_BLEND_MS, 0.0, 1.0
+        )
+        target_steer += (
+            shaped * cfg.STEER_LOCK - target_steer
+        ) * low_speed_blend
+        target_steer = _clamp(target_steer, -cfg.STEER_LOCK, cfg.STEER_LOCK)
+
+        rack_rate = cfg.STEER_RACK_RATE_LOW + (
+            cfg.STEER_RACK_RATE_HIGH - cfg.STEER_RACK_RATE_LOW
         ) * speed_ratio
         if abs(steer_input) < 0.02:
-            response = cfg.STEER_RETURN_RATE
-        delta = _clamp(target_steer - self.steer_angle, -response * dt, response * dt)
+            rack_rate = cfg.STEER_RETURN_RATE
+        delta = _clamp(
+            target_steer - self.steer_angle,
+            -rack_rate * dt,
+            rack_rate * dt,
+        )
         self.steer_angle += delta
 
         engine_fade = 1.0 - 0.42 * speed_ratio ** 1.7
@@ -88,36 +110,48 @@ class Vehicle:
         if self.shift_timer > 0.0:
             engine *= 0.25
         braking = brake_input * cfg.BRAKE_FORCE * (0.88 + 0.12 * surface["grip"])
+        engine_braking = self.get_engine_braking(throttle_input)
         aero_drag = cfg.DRAG_COEF * self.speed * self.speed
         rolling = cfg.ROLLING_RESISTANCE * surface["rolling"]
-        self.speed += (engine - braking - aero_drag - rolling) * dt
+        self.speed += (
+            engine - braking - engine_braking - aero_drag - rolling
+        ) * dt
         self.speed = _clamp(self.speed, 0.0, cfg.MAX_SPEED_MS)
         self._update_gearbox()
 
         if self.speed > 0.35:
-            demanded_yaw = self.speed * math.tan(self.steer_angle) / cfg.WHEELBASE
-            brake_turn_in = 1.0 + (
-                cfg.BRAKE_TURN_IN_GRIP
-                * brake_input
-                * (1.0 - 0.45 * speed_ratio)
+            effective_wheelbase = (
+                cfg.WHEELBASE + cfg.UNDERSTEER_GRADIENT * self.speed * self.speed
             )
-            lateral_accel_limit = (
-                cfg.TYRE_GRIP * surface["grip"] * 9.81
-                + cfg.AERO_GRIP * surface["grip"] * self.speed * self.speed * 9.81
-            ) * brake_turn_in
+            demanded_yaw = (
+                self.speed * math.tan(self.steer_angle) / effective_wheelbase
+            )
+            demanded_yaw *= 1.0 + cfg.TRAIL_BRAKE_ROTATION * brake_input
+            lateral_accel_limit = self.get_lateral_grip_limit(
+                brake_input, throttle_input
+            )
             yaw_limit = lateral_accel_limit / max(self.speed, 3.0)
             target_yaw = _clamp(demanded_yaw, -yaw_limit, yaw_limit)
 
-            # Tyres build force rather than snapping instantly.  Exceeding the
-            # grip circle still introduces visible slip, but increased front
-            # response and downforce prevent persistent high-speed understeer.
-            yaw_response = (
-                cfg.YAW_RESPONSE + cfg.BRAKE_YAW_RESPONSE * brake_input
-            ) * surface["grip"]
-            self.yaw_rate += (target_yaw - self.yaw_rate) * min(1.0, yaw_response * dt)
+            # Pneumatic tyres build lateral force over distance. This
+            # first-order relaxation avoids instant rotation while naturally
+            # responding faster as speed rises.
+            relaxation_time = _clamp(
+                cfg.TYRE_RELAXATION_LENGTH / max(self.speed, 5.0),
+                0.04,
+                0.24,
+            )
+            yaw_alpha = 1.0 - math.exp(
+                -surface["grip"] * dt / relaxation_time
+            )
+            self.yaw_rate += (target_yaw - self.yaw_rate) * yaw_alpha
+
             excess = demanded_yaw - target_yaw
+            kinematic_slip = math.atan(0.48 * math.tan(self.steer_angle))
+            grip_utilisation = abs(target_yaw) / max(yaw_limit, 0.001)
             target_slip = _clamp(
-                excess * cfg.SLIP_FROM_EXCESS,
+                kinematic_slip * max(0.0, 1.0 - grip_utilisation * grip_utilisation)
+                - excess * cfg.SLIP_FROM_EXCESS,
                 -cfg.MAX_SLIP_ANGLE,
                 cfg.MAX_SLIP_ANGLE,
             )
@@ -132,6 +166,24 @@ class Vehicle:
         travel_heading = self.heading + self.slip_angle
         self.x += self.speed * math.cos(travel_heading) * dt
         self.y += self.speed * math.sin(travel_heading) * dt
+
+    def get_lateral_grip_limit(self, brake_input=None, throttle_input=None):
+        """Return available lateral acceleration after friction-circle usage."""
+        brake = self.brake if brake_input is None else float(brake_input or 0.0)
+        throttle = (
+            self.throttle if throttle_input is None else float(throttle_input or 0.0)
+        )
+        surface_grip = self.SURFACE[self.surface]["grip"]
+        base_grip = (
+            cfg.TYRE_GRIP + cfg.AERO_GRIP * self.speed * self.speed
+        ) * surface_grip * 9.81
+        longitudinal_usage = _clamp(
+            brake * cfg.BRAKE_GRIP_USAGE
+            + throttle * cfg.THROTTLE_GRIP_USAGE,
+            0.0,
+            0.98,
+        )
+        return base_grip * math.sqrt(max(0.0, 1.0 - longitudinal_usage ** 2))
 
     def _update_gearbox(self):
         speed_kmh = self.get_speed_kmh()
@@ -151,6 +203,25 @@ class Vehicle:
         upper = upper_bounds[self.gear - 1]
         ratio = _clamp((speed_kmh - lower) / max(upper - lower, 1.0), 0.0, 1.0)
         self.rpm = int(4200 + ratio * 8800)
+
+    def get_engine_braking(self, throttle_input=None):
+        """Return lift-off power-unit deceleration in metres per second squared."""
+        throttle = self.throttle if throttle_input is None else float(throttle_input or 0.0)
+        cutoff = max(cfg.ENGINE_BRAKE_THROTTLE_CUTOFF, 0.001)
+        lift = _clamp((cutoff - throttle) / cutoff, 0.0, 1.0)
+        if lift <= 0.0 or self.speed <= 0.0:
+            return 0.0
+        rpm_ratio = _clamp((self.rpm - 4000.0) / 9000.0, 0.0, 1.0)
+        gear_multiplier = 1.0 + max(0, 8 - self.gear) * cfg.ENGINE_BRAKE_GEAR_GAIN
+        low_speed_fade = _clamp(
+            self.speed / max(cfg.ENGINE_BRAKE_LOW_SPEED_MS, 0.1), 0.0, 1.0
+        )
+        return (
+            lift
+            * (cfg.ENGINE_BRAKE_BASE + cfg.ENGINE_BRAKE_RPM_GAIN * rpm_ratio)
+            * gear_multiplier
+            * low_speed_fade
+        )
 
     def get_speed_kmh(self):
         return self.speed * 3.6

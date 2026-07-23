@@ -4,7 +4,6 @@ import pygame
 
 import config as cfg
 from ai.opponent import AIOpponent
-from audio.engine import EngineAudio
 from game.input import InputHandler
 from physics.vehicle import Vehicle
 from track.layouts import TRACK_ORDER
@@ -64,7 +63,6 @@ class GameLoop:
         self.player = None
         self.ai = None
         self.ai_cars = []
-        self.audio = EngineAudio()
         self.mode = MODES[self.mode_index]
         self.total_laps = 3
         self.lap = 1
@@ -81,13 +79,14 @@ class GameLoop:
         self.session_best_sectors = [float("inf")] * 3
         self.current_sector = 1
         self.session_best_lap = float("inf")
-        self.session_fastest_driver = "---"
         self.start_sequence_time = 0.0
         self.lights_out = True
         self.lights_out_flash = 0.0
         self.lights_out_elapsed = 0.0
         self.player_has_started_lap = True
-        self.lap_start_reference_index = 0
+        self.current_lap_valid = True
+        self.current_lap_trace = []
+        self.personal_best_trace = None
         self.live_delta = None
         self.track_limit_warnings = 0
         self.time_penalty = 0.0
@@ -108,12 +107,8 @@ class GameLoop:
                 break
 
             if self.state == "menu":
-                self.audio.silence()
-                self.audio.stop_startup()
                 self._handle_menu(events)
             elif self.state == "guide":
-                self.audio.silence()
-                self.audio.stop_startup()
                 self._handle_guide(events)
             elif self.state == "race":
                 self._handle_race(events, dt)
@@ -143,7 +138,7 @@ class GameLoop:
             player_idx = self._place_on_grid(self.player, 9)
             self.player.grid_position = 9
         else:
-            player_idx = 6
+            player_idx = 0
             p = self.track.center_points[player_idx]
             self.player.reset(p[0], p[1], p[2])
         for grid_position, ai in enumerate(self.ai_cars):
@@ -176,13 +171,16 @@ class GameLoop:
         self.session_best_sectors = [float("inf")] * 3
         self.current_sector = 1
         self.session_best_lap = float("inf")
-        self.session_fastest_driver = "---"
         self.start_sequence_time = 0.0
         self.lights_out = self.mode != "RACE VS AI"
         self.lights_out_flash = 0.0
         self.lights_out_elapsed = 0.0
         self.player_has_started_lap = self.mode != "RACE VS AI"
-        self.lap_start_reference_index = player_idx
+        self.current_lap_valid = True
+        self.current_lap_trace = [None] * count
+        if self.player_has_started_lap:
+            self.current_lap_trace[player_idx] = 0.0
+        self.personal_best_trace = None
         self.live_delta = None
         self.track_limit_warnings = 0
         self.time_penalty = 0.0
@@ -274,14 +272,12 @@ class GameLoop:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     self._reset_race()
                     self.state = "race"
-                    self.audio.play_startup()
                 elif event.key == pygame.K_ESCAPE:
                     self.state = "menu"
             elif event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 0:
                     self._reset_race()
                     self.state = "race"
-                    self.audio.play_startup()
                 elif event.button == 1:
                     self.state = "menu"
 
@@ -313,8 +309,6 @@ class GameLoop:
         self._update(dt)
 
     def _handle_paused(self, events):
-        self.audio.silence()
-        self.audio.stop_startup()
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -324,7 +318,6 @@ class GameLoop:
                 elif event.key == pygame.K_r:
                     self._reset_race()
                     self.state = "race"
-                    self.audio.play_startup()
             elif event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 7:
                     self.state = "race"
@@ -332,8 +325,6 @@ class GameLoop:
                     self.state = "menu"
 
     def _handle_results(self, events):
-        self.audio.silence()
-        self.audio.stop_startup()
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
@@ -345,7 +336,6 @@ class GameLoop:
                 if event.button == 0:
                     self._reset_race()
                     self.state = "race"
-                    self.audio.play_startup()
                 elif event.button == 1:
                     self.state = "menu"
 
@@ -360,7 +350,6 @@ class GameLoop:
             self.player.speed = 0.0
             for ai in self.ai_cars:
                 ai.speed = 0.0
-            self.audio.silence()
             return
 
         self.lights_out_elapsed += dt
@@ -368,8 +357,8 @@ class GameLoop:
         player_surface, _, _ = self.track.surface_at(self.player.x, self.player.y)
         self.player.set_surface(player_surface)
         self.player.update(dt, self.input.steer, self.input.throttle, self.input.brake)
-        self._apply_world_limits(self.player)
         self._update_track_limits()
+        self._apply_world_limits(self.player)
 
         if self.mode == "RACE VS AI":
             all_cars = [self.player] + self.ai_cars
@@ -390,6 +379,8 @@ class GameLoop:
             self.ai_progress = self.ai.progress
 
         self.lap_timer += dt
+        if self.player_has_started_lap:
+            self._record_lap_trace_point(pi, self.lap_timer)
         self.race_message_time = max(0.0, self.race_message_time - dt)
         self.penalty_message_time = max(0.0, self.penalty_message_time - dt)
         count = len(self.track.center_points)
@@ -405,16 +396,24 @@ class GameLoop:
         crossed_line = self.last_player_idx > count * 0.85 and pi < count * 0.15
         if crossed_line and self.player.speed > 5.0 and not self.player_has_started_lap:
             self.player_has_started_lap = True
-        elif crossed_line and self.player.speed > 5.0:
-            elapsed = self.lap_timer - sum(value or 0.0 for value in self.sector_times[:2])
-            self._record_player_sector(2, elapsed)
-            self.player_last_lap = self.lap_timer
-            self.player_best_lap = min(self.player_best_lap, self.player_last_lap)
-            if self.player_last_lap < self.session_best_lap:
-                self.session_best_lap = self.player_last_lap
-                self.session_fastest_driver = "YOU"
+            self.current_lap_valid = True
             self.lap_timer = 0.0
-            self.lap_start_reference_index = 0
+            self.current_sector = 1
+            self.sector_times = [None, None, None]
+            self.sector_status = [None, None, None]
+            self.current_lap_trace = [None] * count
+            self.current_lap_trace[0] = 0.0
+        elif crossed_line and self.player.speed > 5.0:
+            if self.current_lap_valid:
+                elapsed = self.lap_timer - sum(
+                    value or 0.0 for value in self.sector_times[:2]
+                )
+                self._record_player_sector(2, elapsed)
+            self._commit_player_lap()
+            self.lap_timer = 0.0
+            self.current_lap_valid = True
+            self.current_lap_trace = [None] * count
+            self.current_lap_trace[0] = 0.0
             self.current_sector = 1
             if self.lap >= self.total_laps:
                 self.state = "results"
@@ -422,7 +421,6 @@ class GameLoop:
                 self.lap += 1
         self.last_player_idx = pi
         self.live_delta = self._calculate_live_delta(pi)
-        self.audio.update(self.player, cockpit=False)
 
     def _update_track_limits(self):
         _, _, distance = self.track.surface_at(self.player.x, self.player.y)
@@ -434,37 +432,100 @@ class GameLoop:
             and self.player.speed > 5.0
             and self.lights_out
         ):
-            self.track_limit_warnings += 1
             self.penalty_message_time = 2.4
-            if self.track_limit_warnings >= 3:
-                self.track_limit_warnings = 0
-                self.time_penalty += 5.0
-                self.penalty_message = "5 SECOND TIME PENALTY"
+            if self.mode == "TIME TRIAL":
+                self.current_lap_valid = False
+                self.live_delta = None
+                self.penalty_message = "LAP TIME DELETED"
             else:
-                self.penalty_message = (
-                    f"TRACK LIMITS WARNING {self.track_limit_warnings}/3"
-                )
+                self.track_limit_warnings += 1
+                if self.track_limit_warnings >= 3:
+                    self.track_limit_warnings = 0
+                    self.time_penalty += 5.0
+                    self.penalty_message = "5 SECOND TIME PENALTY"
+                else:
+                    self.penalty_message = (
+                        f"TRACK LIMITS WARNING {self.track_limit_warnings}/3"
+                    )
         self._outside_track_limits = outside
 
-    def _benchmark_lap(self):
-        if self.session_best_lap < self.track.reference_lap_time:
-            return self.session_best_lap, self.session_fastest_driver
-        return self.track.reference_lap_time, self.track.reference_driver
+    def _commit_player_lap(self):
+        """Store only valid completed laps and discard invalid time-trial laps."""
+        if not self.current_lap_valid:
+            self.player_last_lap = 0.0
+            self.sector_times = [None, None, None]
+            self.sector_status = [None, None, None]
+            self.penalty_message_time = 2.4
+            self.penalty_message = "LAP TIME DELETED"
+            return False
+
+        self.player_last_lap = self.lap_timer
+        completed_trace = self._complete_lap_trace(
+            self.current_lap_trace, self.player_last_lap
+        )
+        if self.player_last_lap < self.player_best_lap:
+            self.player_best_lap = self.player_last_lap
+            self.personal_best_trace = completed_trace
+        if self.player_last_lap < self.session_best_lap:
+            self.session_best_lap = self.player_last_lap
+        return True
+
+    def _gap_lap_time(self):
+        completed_laps = [
+            lap_time
+            for lap_time in (self.player_best_lap, self.session_best_lap)
+            if math.isfinite(lap_time) and lap_time > 0.0
+        ]
+        if completed_laps:
+            return min(completed_laps)
+        return max(60.0, self.track.total_length / 65.0)
 
     def _calculate_live_delta(self, index):
-        if not self.player_has_started_lap or not self.track.reference_elapsed:
+        if (
+            not self.player_has_started_lap
+            or not self.current_lap_valid
+            or not self.personal_best_trace
+        ):
             return None
-        reference = self.track.reference_elapsed
-        start = self.lap_start_reference_index % len(reference)
-        if index >= start:
-            target_elapsed = reference[index] - reference[start]
-        else:
-            target_elapsed = (
-                self.track.reference_lap_time - reference[start] + reference[index]
-            )
-        benchmark_lap, _ = self._benchmark_lap()
-        target_elapsed *= benchmark_lap / self.track.reference_lap_time
+        target_elapsed = self.personal_best_trace[index % len(self.personal_best_trace)]
+        if target_elapsed is None:
+            return None
         return self.lap_timer - target_elapsed
+
+    def _record_lap_trace_point(self, index, elapsed):
+        if not self.current_lap_trace:
+            return
+        index %= len(self.current_lap_trace)
+        previous = self.current_lap_trace[index]
+        if previous is None or elapsed < previous:
+            self.current_lap_trace[index] = elapsed
+
+    @staticmethod
+    def _complete_lap_trace(trace, lap_time):
+        """Fill unsampled points to create a stable personal-best timeline."""
+        count = len(trace)
+        if count == 0:
+            return []
+        anchors = [(0, 0.0)]
+        for index in range(1, count):
+            elapsed = trace[index]
+            if elapsed is not None and 0.0 <= elapsed <= lap_time:
+                anchors.append((index, elapsed))
+        anchors.append((count, lap_time))
+
+        completed = [0.0] * count
+        previous_elapsed = 0.0
+        for (start_index, start_time), (end_index, end_time) in zip(
+            anchors, anchors[1:]
+        ):
+            start_time = max(previous_elapsed, start_time)
+            end_time = max(start_time, end_time)
+            span = max(1, end_index - start_index)
+            for index in range(start_index, end_index):
+                blend = (index - start_index) / span
+                completed[index] = start_time + (end_time - start_time) * blend
+            previous_elapsed = end_time
+        return completed
 
     @staticmethod
     def _crossed_marker(previous, current, marker, count):
@@ -516,7 +577,6 @@ class GameLoop:
             ai.best_lap = min(ai.best_lap, ai.last_lap)
             if ai.last_lap < self.session_best_lap:
                 self.session_best_lap = ai.last_lap
-                self.session_fastest_driver = ai.driver_name
             ai.lap += 1
             ai._lap_timer = 0.0
             ai._current_sector = 1
@@ -565,7 +625,7 @@ class GameLoop:
         return ahead + 1
 
     def _player_race_score(self):
-        benchmark_lap, _ = self._benchmark_lap()
+        benchmark_lap = self._gap_lap_time()
         return (
             (self.lap - 1)
             + self.player_progress
@@ -582,7 +642,7 @@ class GameLoop:
         )
 
     def _standings_payload(self):
-        benchmark_lap, _ = self._benchmark_lap()
+        benchmark_lap = self._gap_lap_time()
         player_score = self._player_race_score()
         entries = [
             {
@@ -613,10 +673,7 @@ class GameLoop:
             "sector_status": self.sector_status,
             "current_sector": self.current_sector,
             "personal_best_lap": self.player_best_lap,
-            "session_best_lap": self.session_best_lap,
-            "fastest_driver": self.session_fastest_driver,
             "delta": self.live_delta,
-            "delta_target": self._benchmark_lap()[1],
         }
 
     def _apply_world_limits(self, vehicle):
@@ -648,6 +705,11 @@ class GameLoop:
         self.player.reset(p[0], p[1], p[2])
         self.last_player_idx = idx
         self._outside_track_limits = False
+        if self.mode == "TIME TRIAL":
+            self.current_lap_valid = False
+            self.live_delta = None
+            self.penalty_message_time = 2.4
+            self.penalty_message = "LAP TIME DELETED"
 
     def _render(self):
         if self.state == "menu":
@@ -1362,18 +1424,6 @@ class GameLoop:
             610,
             self.font_s,
             cfg.HUD_LABEL,
-            center_x=945,
-        )
-        self._center_text(
-            self.screen,
-            (
-                f"2025 QUALIFYING REFERENCE  {self.track.reference_driver}  "
-                f"{self._fmt_time(self.track.reference_lap_time)}  •  "
-                + " / ".join(f"{value:.3f}" for value in self.track.reference_sector_times)
-            ),
-            636,
-            self.font_s,
-            self.track.accent,
             center_x=945,
         )
         self._text(

@@ -1,5 +1,6 @@
 """Shared configuration for Racing Line Pro."""
 
+VERSION = "2.4.0"
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS = 60
@@ -26,25 +27,40 @@ DRAG_COEF = 0.00095
 ROLLING_RESISTANCE = 0.20
 WHEELBASE = 3.6
 
-# Steering is speed-sensitive: enough lock for Monaco's hairpin at low speed,
-# but only a small, stable steering range at 300 km/h.
-STEER_LOCK_LOW = 0.48
-STEER_LOCK_HIGH = 0.145
-STEER_RESPONSE_LOW = 3.2
-STEER_RESPONSE_HIGH = 1.70
-STEER_RETURN_RATE = 4.8
-STEER_INPUT_EXPONENT = 1.55
+# Lift-off deceleration combines speed-squared aerodynamic drag above with
+# negative power-unit torque below. Engine braking rises with RPM and lower
+# gear multiplication, then fades near walking speed so the car still rolls
+# naturally into its pit box or starting position.
+ENGINE_BRAKE_BASE = 0.48
+ENGINE_BRAKE_RPM_GAIN = 1.08
+ENGINE_BRAKE_GEAR_GAIN = 0.10
+ENGINE_BRAKE_THROTTLE_CUTOFF = 0.10
+ENGINE_BRAKE_LOW_SPEED_MS = 14.0
+
+# The controller requests lateral acceleration rather than directly applying
+# full road-wheel lock. A fixed physical rack limit remains available in slow
+# hairpins, while speed, wheelbase, tyre grip and aero load determine the small
+# steering angles used through fast corners.
+STEER_LOCK = 0.48
+STEER_INPUT_EXPONENT = 1.35
+STEER_G_DEMAND = 0.96
+STEER_LOW_SPEED_BLEND_MS = 15.0
+STEER_RACK_RATE_LOW = 3.0
+STEER_RACK_RATE_HIGH = 1.35
+STEER_RETURN_RATE = 4.4
+UNDERSTEER_GRADIENT = 0.00011
 
 # Mechanical grip dominates slow corners while downforce restores front-axle
-# authority through medium and high-speed bends.  The previous aero value left
-# the car at roughly 2.3 g near 300 km/h, so steering input saturated too early.
+# authority through medium and high-speed bends. Tyre force builds over a
+# relaxation length and longitudinal input consumes part of the friction circle.
 TYRE_GRIP = 2.04
 AERO_GRIP = 0.00019
-BRAKE_TURN_IN_GRIP = 0.10
-YAW_RESPONSE = 10.4
-BRAKE_YAW_RESPONSE = 2.2
-SLIP_BUILD_RATE = 6.4
-SLIP_FROM_EXCESS = 0.052
+TYRE_RELAXATION_LENGTH = 3.0
+BRAKE_GRIP_USAGE = 0.78
+THROTTLE_GRIP_USAGE = 0.20
+TRAIL_BRAKE_ROTATION = 0.08
+SLIP_BUILD_RATE = 8.0
+SLIP_FROM_EXCESS = 0.040
 MAX_SLIP_ANGLE = 0.105
 LOOK_AHEAD = 0.70
 

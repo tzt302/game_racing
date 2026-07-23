@@ -1,7 +1,6 @@
 import math
 import sys
 import unittest
-import wave
 from pathlib import Path
 
 
@@ -11,7 +10,6 @@ sys.path.insert(1, str(ROOT / "src"))
 
 import config as cfg
 from physics.vehicle import Vehicle
-from audio.engine import EngineAudio
 from game.input import InputHandler
 from game.loop import AI_PROFILES, VIEW_RANGES, GameLoop
 from track.layouts import TRACK_ORDER, TRACKS
@@ -137,14 +135,64 @@ class VehicleTests(unittest.TestCase):
         self.assertGreater(car.get_speed_kmh(), 360.0)
         self.assertLessEqual(car.get_speed_kmh(), cfg.MAX_SPEED)
 
+    def test_lift_off_engine_braking_is_rpm_and_gear_sensitive(self):
+        car = Vehicle()
+        car.speed = 150.0 / 3.6
+        car.rpm = 9000
+        car.gear = 3
+        low_gear_braking = car.get_engine_braking(0.0)
+        car.gear = 7
+        high_gear_braking = car.get_engine_braking(0.0)
+        self.assertGreater(low_gear_braking, 1.0)
+        self.assertGreater(low_gear_braking, high_gear_braking)
+        self.assertEqual(car.get_engine_braking(0.10), 0.0)
+
+    def test_lift_off_coast_down_from_200_to_100_is_not_excessive(self):
+        car = Vehicle()
+        car.speed = 200.0 / 3.6
+        elapsed = 0.0
+        distance = 0.0
+        while car.get_speed_kmh() > 100.0 and elapsed < 20.0:
+            previous_speed = car.speed
+            car.update(1 / 60, 0.0, 0.0, 0.0)
+            distance += (previous_speed + car.speed) * 0.5 / 60
+            elapsed += 1 / 60
+        self.assertLess(elapsed, 12.0)
+        self.assertLess(distance, 470.0)
+
     def test_high_speed_downforce_preserves_cornering_authority(self):
         car = Vehicle()
         car.speed = 220.0 / 3.6
         for _ in range(90):
             car.update(1 / 60, 0.65, 0.55, 0.0)
         lateral_acceleration = abs(car.yaw_rate * car.speed)
-        self.assertGreater(lateral_acceleration, 2.6 * 9.81)
+        available_grip = car.get_lateral_grip_limit(0.0, 0.55)
+        self.assertGreater(lateral_acceleration, 2.0 * 9.81)
+        self.assertLessEqual(lateral_acceleration, available_grip * 1.01)
         self.assertLessEqual(abs(car.slip_angle), cfg.MAX_SLIP_ANGLE)
+
+    def test_braking_consumes_lateral_grip_through_friction_circle(self):
+        car = Vehicle()
+        car.speed = 220.0 / 3.6
+        free_rolling = car.get_lateral_grip_limit(0.0, 0.0)
+        trail_braking = car.get_lateral_grip_limit(0.25, 0.0)
+        heavy_braking = car.get_lateral_grip_limit(0.90, 0.0)
+        self.assertGreater(free_rolling, trail_braking)
+        self.assertGreater(trail_braking, heavy_braking)
+
+    def test_steering_rack_reversal_is_rate_limited(self):
+        car = Vehicle()
+        car.speed = 100.0 / 3.6
+        for _ in range(12):
+            car.update(1 / 60, 0.8, 0.0, 0.0)
+        positive_angle = car.steer_angle
+        car.update(1 / 60, -0.8, 0.0, 0.0)
+        self.assertGreater(positive_angle, 0.0)
+        self.assertGreater(car.steer_angle, 0.0)
+        self.assertLess(
+            positive_angle - car.steer_angle,
+            cfg.STEER_RACK_RATE_LOW / 60.0 * 1.01,
+        )
 
     def test_braking_improves_turn_in_without_unstable_rotation(self):
         coasting = Vehicle()
@@ -155,29 +203,6 @@ class VehicleTests(unittest.TestCase):
             braking.update(1 / 60, 0.55, 0.0, 0.18)
         self.assertGreater(abs(braking.yaw_rate), abs(coasting.yaw_rate))
         self.assertLess(abs(braking.slip_angle), 0.08)
-
-
-class AudioModelTests(unittest.TestCase):
-    def test_v6_firing_frequency_and_equal_power_crossfade(self):
-        self.assertEqual(EngineAudio.firing_frequency(12000), 600.0)
-        weights = EngineAudio.band_weights(8200)
-        self.assertEqual(len(weights), 6)
-        self.assertAlmostEqual(sum(value * value for value in weights), 1.0)
-        self.assertEqual(sum(value > 0.0 for value in weights), 2)
-
-    def test_real_f1_recording_layers_are_stereo_and_loop_safe(self):
-        source = ROOT / "assets" / "audio" / "source" / "f1_br_06_engine_starts_4.ogg"
-        self.assertGreater(source.stat().st_size, 50000)
-        for index in range(6):
-            path = ROOT / "assets" / "audio" / f"f1_real_{index}.wav"
-            with wave.open(str(path), "rb") as recording:
-                self.assertEqual(recording.getframerate(), 44100)
-                self.assertEqual(recording.getnchannels(), 2)
-                self.assertAlmostEqual(
-                    recording.getnframes() / recording.getframerate(),
-                    0.82,
-                    places=2,
-                )
 
 
 class RaceFormatTests(unittest.TestCase):
@@ -209,21 +234,37 @@ class RaceFormatTests(unittest.TestCase):
         self.assertGreater(scales[0], scales[1])
         self.assertGreater(scales[1], scales[2])
 
-    def test_live_delta_compares_player_with_reference_point_time(self):
+    def test_live_delta_compares_player_with_personal_best_trace(self):
         game = GameLoop.__new__(GameLoop)
         game.track = Track("monza")
         game.player_has_started_lap = True
-        game.lap_start_reference_index = 0
-        game.session_best_lap = float("inf")
-        game.session_fastest_driver = "---"
+        game.current_lap_valid = True
+        game.personal_best_trace = [
+            point_index * 0.1
+            for point_index in range(len(game.track.center_points))
+        ]
         index = 240
-        game.lap_timer = game.track.reference_elapsed[index] + 0.375
+        game.lap_timer = game.personal_best_trace[index] + 0.375
         self.assertAlmostEqual(game._calculate_live_delta(index), 0.375, places=3)
+
+    def test_live_delta_waits_for_a_personal_best_lap(self):
+        game = GameLoop.__new__(GameLoop)
+        game.player_has_started_lap = True
+        game.current_lap_valid = True
+        game.personal_best_trace = None
+        game.lap_timer = 10.0
+        self.assertIsNone(game._calculate_live_delta(100))
+
+    def test_personal_best_trace_interpolates_unsampled_points(self):
+        trace = [0.0, None, 2.0, None]
+        completed = GameLoop._complete_lap_trace(trace, 4.0)
+        self.assertEqual(completed, [0.0, 1.0, 2.0, 3.0])
 
     def test_track_limits_count_excursions_and_penalize_third(self):
         game = GameLoop.__new__(GameLoop)
         game.track = Track("monza")
         game.player = Vehicle()
+        game.mode = "RACE VS AI"
         game.player.speed = 40.0
         game.lights_out = True
         game.track_limit_warnings = 0
@@ -248,6 +289,52 @@ class RaceFormatTests(unittest.TestCase):
         self.assertEqual(game.time_penalty, 5.0)
         self.assertEqual(game.penalty_message, "5 SECOND TIME PENALTY")
 
+    def test_time_trial_track_limit_deletes_lap_without_penalty(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("monza")
+        game.player = Vehicle()
+        game.mode = "TIME TRIAL"
+        game.player.speed = 40.0
+        game.lights_out = True
+        game.current_lap_valid = True
+        game.live_delta = 0.2
+        game.track_limit_warnings = 0
+        game.time_penalty = 0.0
+        game._outside_track_limits = False
+        game.penalty_message_time = 0.0
+        game.penalty_message = ""
+        x, y, heading, _ = game.track.center_points[100]
+        nx, ny = -math.sin(heading), math.cos(heading)
+        outside = game.track.width * 0.5 + cfg.KERB_WIDTH + 1.0
+        game.player.x, game.player.y = x + nx * outside, y + ny * outside
+
+        game._update_track_limits()
+
+        self.assertFalse(game.current_lap_valid)
+        self.assertIsNone(game.live_delta)
+        self.assertEqual(game.track_limit_warnings, 0)
+        self.assertEqual(game.time_penalty, 0.0)
+        self.assertEqual(game.penalty_message, "LAP TIME DELETED")
+
+    def test_invalid_time_trial_lap_cannot_update_personal_best(self):
+        game = GameLoop.__new__(GameLoop)
+        game.current_lap_valid = False
+        game.lap_timer = 75.0
+        game.player_last_lap = 0.0
+        game.player_best_lap = float("inf")
+        game.session_best_lap = float("inf")
+        game.personal_best_trace = None
+        game.current_lap_trace = [0.0, 25.0, 50.0]
+        game.sector_times = [20.0, 25.0, None]
+        game.sector_status = ["green", "green", None]
+        game.penalty_message_time = 0.0
+        game.penalty_message = ""
+
+        self.assertFalse(game._commit_player_lap())
+        self.assertEqual(game.player_last_lap, 0.0)
+        self.assertEqual(game.player_best_lap, float("inf"))
+        self.assertIsNone(game.personal_best_trace)
+
     def test_standings_include_player_and_all_nine_ai(self):
         game = GameLoop.__new__(GameLoop)
         game.track = Track("spa")
@@ -255,8 +342,8 @@ class RaceFormatTests(unittest.TestCase):
         game.player_progress = 0.50
         game.time_penalty = 0.0
         game.livery_index = 0
+        game.player_best_lap = float("inf")
         game.session_best_lap = float("inf")
-        game.session_fastest_driver = "---"
         game.player = Vehicle()
         game.player.grid_position = 9
         game.ai_cars = []

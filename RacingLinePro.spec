@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('assets', 'assets'), ('config.py', '.'), ('src', 'src')]
+datas = [
+    ('config.py', '.'),
+    ('src/track/telemetry_layouts.json', 'src/track'),
+]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('pygame')
