@@ -109,9 +109,11 @@ class GameLoop:
 
             if self.state == "menu":
                 self.audio.silence()
+                self.audio.stop_startup()
                 self._handle_menu(events)
             elif self.state == "guide":
                 self.audio.silence()
+                self.audio.stop_startup()
                 self._handle_guide(events)
             elif self.state == "race":
                 self._handle_race(events, dt)
@@ -272,12 +274,14 @@ class GameLoop:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     self._reset_race()
                     self.state = "race"
+                    self.audio.play_startup()
                 elif event.key == pygame.K_ESCAPE:
                     self.state = "menu"
             elif event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 0:
                     self._reset_race()
                     self.state = "race"
+                    self.audio.play_startup()
                 elif event.button == 1:
                     self.state = "menu"
 
@@ -310,6 +314,7 @@ class GameLoop:
 
     def _handle_paused(self, events):
         self.audio.silence()
+        self.audio.stop_startup()
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -319,6 +324,7 @@ class GameLoop:
                 elif event.key == pygame.K_r:
                     self._reset_race()
                     self.state = "race"
+                    self.audio.play_startup()
             elif event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 7:
                     self.state = "race"
@@ -327,6 +333,7 @@ class GameLoop:
 
     def _handle_results(self, events):
         self.audio.silence()
+        self.audio.stop_startup()
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
@@ -338,6 +345,7 @@ class GameLoop:
                 if event.button == 0:
                     self._reset_race()
                     self.state = "race"
+                    self.audio.play_startup()
                 elif event.button == 1:
                     self.state = "menu"
 

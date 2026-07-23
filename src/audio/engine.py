@@ -15,6 +15,7 @@ class EngineAudio:
         self.texture_sounds = []
         self.synth_sounds = []
         self.shift_sound = None
+        self.startup_sound = None
         self.scrub_sound = None
         self.turbo_sound = None
         self.overrun_sound = None
@@ -31,7 +32,7 @@ class EngineAudio:
             root = Path(__file__).resolve().parents[2]
             audio_dir = root / "assets" / "audio"
             self.texture_sounds = [
-                pygame.mixer.Sound(str(audio_dir / f"engine_{index}.wav"))
+                pygame.mixer.Sound(str(audio_dir / f"f1_real_{index}.wav"))
                 for index in range(6)
             ]
             self.synth_sounds = [
@@ -48,6 +49,9 @@ class EngineAudio:
                     channel.set_volume(0.0)
 
             self.shift_sound = self._make_shift_sound()
+            self.startup_sound = pygame.mixer.Sound(
+                str(audio_dir / "source" / "f1_br_06_engine_starts_4.ogg")
+            )
             self.scrub_sound = self._make_scrub_sound()
             self.turbo_sound = self._make_turbo_sound()
             self.overrun_sound = self._make_overrun_sound()
@@ -180,8 +184,8 @@ class EngineAudio:
         master = 0.78 if cockpit else 1.0
 
         for index, weight in enumerate(weights):
-            target_texture = weight * (0.10 + throttle * 0.25) * master
-            target_synth = weight * power_load * (0.30 + rpm_ratio * 0.35) * master
+            target_texture = weight * (0.22 + throttle * 0.48) * master
+            target_synth = weight * power_load * (0.12 + rpm_ratio * 0.19) * master
             self._texture_volume[index] += (
                 target_texture - self._texture_volume[index]
             ) * 0.24
@@ -210,6 +214,12 @@ class EngineAudio:
             scrub = max(scrub, 0.34)
         self.scrub_channel.set_volume(scrub)
 
+    def play_startup(self):
+        if self.available and self.startup_sound:
+            channel = pygame.mixer.Channel(16)
+            channel.play(self.startup_sound)
+            channel.set_volume(0.78)
+
     def silence(self):
         if not self.available:
             return
@@ -223,3 +233,7 @@ class EngineAudio:
         ):
             if channel:
                 channel.set_volume(0.0)
+
+    def stop_startup(self):
+        if self.available:
+            pygame.mixer.Channel(16).stop()

@@ -1,6 +1,7 @@
 import math
 import sys
 import unittest
+import wave
 from pathlib import Path
 
 
@@ -163,6 +164,20 @@ class AudioModelTests(unittest.TestCase):
         self.assertEqual(len(weights), 6)
         self.assertAlmostEqual(sum(value * value for value in weights), 1.0)
         self.assertEqual(sum(value > 0.0 for value in weights), 2)
+
+    def test_real_f1_recording_layers_are_stereo_and_loop_safe(self):
+        source = ROOT / "assets" / "audio" / "source" / "f1_br_06_engine_starts_4.ogg"
+        self.assertGreater(source.stat().st_size, 50000)
+        for index in range(6):
+            path = ROOT / "assets" / "audio" / f"f1_real_{index}.wav"
+            with wave.open(str(path), "rb") as recording:
+                self.assertEqual(recording.getframerate(), 44100)
+                self.assertEqual(recording.getnchannels(), 2)
+                self.assertAlmostEqual(
+                    recording.getnframes() / recording.getframerate(),
+                    0.82,
+                    places=2,
+                )
 
 
 class RaceFormatTests(unittest.TestCase):

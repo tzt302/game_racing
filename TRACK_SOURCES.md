@@ -32,15 +32,26 @@ Public circuit diagrams were used as a visual cross-check:
 
 ## Audio
 
+Version 2.3.2 adds the real Formula 1 field recording
+[F1 BR 06 Engine Starts 4.wav](https://freesound.org/people/rfhache/sounds/44765/)
+by **rfhache**, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It was recorded at
+the 2006 Brazilian Grand Prix. The public preview is segmented, pitch-scaled,
+normalized and crossfaded into six loop-safe RPM layers. The complete
+attribution and modification notice is stored in
+`assets/audio/source/ATTRIBUTION.md`.
+
 The six RPM-layer engine loops in `assets/audio/` are adapted by **domasx2**
 from a public-domain recording and published under CC0:
 
 [OpenGameArt — racing car engine sound loops](https://opengameart.org/content/racing-car-engine-sound-loops)
 
-Version 2.2 layers these recordings under a runtime-generated four-stroke V6
-combustion model. The harmonic engine layers, turbo whistle, overrun crackle,
-gear-shift ignition cut, and tyre scrub are synthesized locally and do not
-contain additional third-party recordings.
+Version 2.3.2 replaces the primary texture mix with the Freesound field
+recording and keeps the older CC0 loops as archived source material. A quieter
+runtime-generated four-stroke V6 layer preserves RPM definition. The harmonic
+engine layers, turbo whistle, overrun crackle, gear-shift ignition cut, and tyre
+scrub are synthesized locally and do not contain additional third-party
+recordings.
 
 ## Disclaimer
 
