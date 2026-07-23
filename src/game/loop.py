@@ -20,12 +20,21 @@ CAR_LIVERIES = [
 ]
 MODES = ["TIME TRIAL", "RACE VS AI"]
 DIFFICULTIES = ["EASY", "NORMAL", "HARD"]
+VIEW_RANGES = [
+    {"name": "STANDARD", "scale": 12.0},
+    {"name": "WIDE", "scale": 9.5},
+    {"name": "ULTRA WIDE", "scale": 7.5},
+]
 AI_PROFILES = [
     {"name": "NOVA", "skill": 0.96, "aggression": 0.74, "consistency": 0.96, "color": (55, 115, 245)},
     {"name": "APEX", "skill": 0.93, "aggression": 0.88, "consistency": 0.91, "color": (245, 130, 30)},
     {"name": "VOLT", "skill": 0.90, "aggression": 0.58, "consistency": 0.94, "color": (45, 190, 165)},
     {"name": "ORBIT", "skill": 0.87, "aggression": 0.66, "consistency": 0.86, "color": (175, 75, 225)},
     {"name": "ROOK", "skill": 0.84, "aggression": 0.42, "consistency": 0.82, "color": (230, 215, 55)},
+    {"name": "CRIMSON", "skill": 0.91, "aggression": 0.79, "consistency": 0.89, "color": (205, 35, 48)},
+    {"name": "ARROW", "skill": 0.89, "aggression": 0.61, "consistency": 0.93, "color": (225, 230, 235)},
+    {"name": "ZENITH", "skill": 0.86, "aggression": 0.71, "consistency": 0.85, "color": (65, 205, 95)},
+    {"name": "PHANTOM", "skill": 0.88, "aggression": 0.52, "consistency": 0.90, "color": (90, 95, 105)},
 ]
 
 
@@ -44,6 +53,7 @@ class GameLoop:
         self.track_index = 0
         self.mode_index = 0
         self.difficulty_index = 1
+        self.view_range_index = 1
         self.livery_index = 0
         self.menu_row = 0
         self.state = "menu"
@@ -72,6 +82,11 @@ class GameLoop:
         self.current_sector = 1
         self.session_best_lap = float("inf")
         self.session_fastest_driver = "---"
+        self.start_sequence_time = 0.0
+        self.lights_out = True
+        self.lights_out_flash = 0.0
+        self.lights_out_elapsed = 0.0
+        self.player_has_started_lap = True
         self._load_track()
 
     def run(self):
@@ -115,16 +130,21 @@ class GameLoop:
 
     def _reset_race(self):
         count = len(self.track.center_points)
-        player_idx = 6
-        p = self.track.center_points[player_idx]
-        self.player.reset(p[0], p[1], p[2])
+        if self.mode == "RACE VS AI":
+            player_idx = self._place_on_grid(self.player, 9)
+            self.player.grid_position = 9
+        else:
+            player_idx = 6
+            p = self.track.center_points[player_idx]
+            self.player.reset(p[0], p[1], p[2])
         for grid_position, ai in enumerate(self.ai_cars):
-            ai_idx = (count - 8 - grid_position * 5) % count
-            a = self.track.center_points[ai_idx]
-            heading = a[2]
-            nx, ny = -math.sin(heading), math.cos(heading)
-            side = -1 if grid_position % 2 else 1
-            ai.reset(a[0] + nx * side * 1.8, a[1] + ny * side * 1.8, heading)
+            ai.grid_position = grid_position
+            if self.mode == "RACE VS AI":
+                ai_idx = self._place_on_grid(ai, grid_position)
+            else:
+                ai_idx = (count - 8 - grid_position * 5) % count
+                a = self.track.center_points[ai_idx]
+                ai.reset(a[0], a[1], a[2])
             ai.progress = ai_idx / count
             ai.lap = 0
             ai.best_lap = float("inf")
@@ -148,6 +168,27 @@ class GameLoop:
         self.current_sector = 1
         self.session_best_lap = float("inf")
         self.session_fastest_driver = "---"
+        self.start_sequence_time = 0.0
+        self.lights_out = self.mode != "RACE VS AI"
+        self.lights_out_flash = 0.0
+        self.lights_out_elapsed = 0.0
+        self.player_has_started_lap = self.mode != "RACE VS AI"
+
+    def _place_on_grid(self, vehicle, grid_position):
+        """Place a car on a two-column, five-row starting grid."""
+        count = len(self.track.center_points)
+        row = grid_position // 2
+        index = (count - 2 - row * 2) % count
+        point = self.track.center_points[index]
+        normal_x, normal_y = -math.sin(point[2]), math.cos(point[2])
+        lane_offset = min(2.6, self.track.width * 0.20)
+        side = -1.0 if grid_position % 2 == 0 else 1.0
+        vehicle.reset(
+            point[0] + normal_x * lane_offset * side,
+            point[1] + normal_y * lane_offset * side,
+            point[2],
+        )
+        return index
 
     def _handle_menu(self, events):
         for event in events:
@@ -167,14 +208,14 @@ class GameLoop:
                 key = pygame.K_RETURN
 
             if key == pygame.K_UP:
-                self.menu_row = (self.menu_row - 1) % 5
+                self.menu_row = (self.menu_row - 1) % 6
             elif key == pygame.K_DOWN:
-                self.menu_row = (self.menu_row + 1) % 5
+                self.menu_row = (self.menu_row + 1) % 6
             elif key in (pygame.K_LEFT, pygame.K_RIGHT):
                 direction = -1 if key == pygame.K_LEFT else 1
                 self._change_menu_value(direction)
             elif key in (pygame.K_RETURN, pygame.K_SPACE):
-                if self.menu_row == 4:
+                if self.menu_row == 5:
                     self.mode = MODES[self.mode_index]
                     self._load_track()
                     self.state = "guide"
@@ -194,7 +235,22 @@ class GameLoop:
             for ai in self.ai_cars:
                 ai.difficulty = DIFFICULTIES[self.difficulty_index]
         elif self.menu_row == 3:
+            self.view_range_index = (self.view_range_index + direction) % len(VIEW_RANGES)
+        elif self.menu_row == 4:
             self.livery_index = (self.livery_index + direction) % len(CAR_LIVERIES)
+
+    def _change_view_range(self, direction):
+        self.view_range_index = max(
+            0,
+            min(len(VIEW_RANGES) - 1, self.view_range_index + direction),
+        )
+
+    def _illuminated_start_lights(self):
+        if self.lights_out:
+            return 0
+        if self.start_sequence_time < 0.75:
+            return 0
+        return min(5, int((self.start_sequence_time - 0.75) / 0.75) + 1)
 
     def _handle_guide(self, events):
         for event in events:
@@ -222,6 +278,12 @@ class GameLoop:
                     self.show_racing_line = not self.show_racing_line
                 elif event.key == pygame.K_b:
                     self.show_brake_zones = not self.show_brake_zones
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS, pygame.K_LEFTBRACKET):
+                    self._change_view_range(1)
+                elif event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_RIGHTBRACKET):
+                    self._change_view_range(-1)
+            elif event.type == pygame.MOUSEWHEEL:
+                self._change_view_range(-1 if event.y > 0 else 1)
             elif event.type == pygame.JOYBUTTONDOWN and event.button == 7:
                 self.state = "paused"
         if self.state != "race":
@@ -266,6 +328,20 @@ class GameLoop:
                     self.state = "menu"
 
     def _update(self, dt):
+        if not self.lights_out:
+            self.start_sequence_time += dt
+            if self.start_sequence_time >= 5.25:
+                self.lights_out = True
+                self.lights_out_flash = 1.0
+                self.lights_out_elapsed = 0.0
+            self.player.speed = 0.0
+            for ai in self.ai_cars:
+                ai.speed = 0.0
+            self.audio.silence()
+            return
+
+        self.lights_out_elapsed += dt
+        self.lights_out_flash = max(0.0, self.lights_out_flash - dt)
         player_surface, _, _ = self.track.surface_at(self.player.x, self.player.y)
         self.player.set_surface(player_surface)
         self.player.update(dt, self.input.steer, self.input.throttle, self.input.brake)
@@ -302,7 +378,9 @@ class GameLoop:
             self.current_sector = 3
 
         crossed_line = self.last_player_idx > count * 0.85 and pi < count * 0.15
-        if crossed_line and self.player.speed > 5.0:
+        if crossed_line and self.player.speed > 5.0 and not self.player_has_started_lap:
+            self.player_has_started_lap = True
+        elif crossed_line and self.player.speed > 5.0:
             elapsed = self.lap_timer - sum(value or 0.0 for value in self.sector_times[:2])
             self._record_player_sector(2, elapsed)
             self.player_last_lap = self.lap_timer
@@ -409,10 +487,18 @@ class GameLoop:
                         second.speed = impact_speed
 
     def _race_position(self):
-        player_score = (self.lap - 1) + self.player_progress
+        player_score = (
+            (self.lap - 1)
+            + self.player_progress
+            - getattr(self.player, "grid_position", 9) * 0.000001
+        )
         ahead = 0
         for ai in self.ai_cars:
-            ai_score = max(0, ai.lap - 1) + ai.progress
+            ai_score = (
+                max(0, ai.lap - 1)
+                + ai.progress
+                - getattr(ai, "grid_position", 0) * 0.000001
+            )
             if ai_score > player_score:
                 ahead += 1
         return ahead + 1
@@ -491,7 +577,7 @@ class GameLoop:
         self._draw_f1_car(self.player, livery["body"], livery["accent"], "")
         if self.mode == "RACE VS AI":
             for ai in self.ai_cars:
-                self._draw_f1_car(ai, ai.color, (245, 245, 245), ai.driver_name)
+                self._draw_f1_car(ai, ai.color, (245, 245, 245), ai.driver_name[:3])
 
         self._draw_minimap()
         position = self._race_position() if self.mode == "RACE VS AI" else 1
@@ -527,6 +613,28 @@ class GameLoop:
                 self.font_s,
                 cfg.WHITE,
             )
+        if self.mode == "RACE VS AI" and (not self.lights_out or self.lights_out_flash > 0):
+            self._draw_start_lights()
+
+    def _draw_start_lights(self):
+        panel = pygame.Rect(cfg.WINDOW_WIDTH // 2 - 205, 98, 410, 102)
+        pygame.draw.rect(self.screen, (5, 7, 9), panel, border_radius=14)
+        pygame.draw.rect(self.screen, (70, 76, 82), panel, 3, border_radius=14)
+        illuminated = self._illuminated_start_lights()
+        for index in range(5):
+            center = (panel.x + 57 + index * 74, panel.y + 42)
+            pygame.draw.circle(self.screen, (30, 32, 34), center, 24)
+            pygame.draw.circle(
+                self.screen,
+                (242, 24, 38) if index < illuminated else (70, 18, 22),
+                center,
+                18,
+            )
+            if index < illuminated:
+                pygame.draw.circle(self.screen, (255, 115, 105), (center[0] - 5, center[1] - 6), 5)
+        message = "LIGHTS OUT" if self.lights_out else "HOLD THE BRAKE"
+        color = cfg.WHITE if self.lights_out else cfg.HUD_LABEL
+        self._center_text(self.screen, message, panel.y + 72, self.font_s, color)
 
     def _draw_cockpit_world(self):
         width, height = cfg.WINDOW_WIDTH, cfg.WINDOW_HEIGHT
@@ -871,7 +979,7 @@ class GameLoop:
 
     def _draw_track(self):
         points = [self._world_to_screen(p[0], p[1]) for p in self.track.center_points]
-        scale = cfg.PX_PER_M
+        scale = VIEW_RANGES[self.view_range_index]["scale"]
         outer_width = int(
             (self.track.width + 2 * (cfg.KERB_WIDTH + cfg.RUNOFF_WIDTH)) * scale
         )
@@ -946,8 +1054,9 @@ class GameLoop:
         center = self._world_to_screen(vehicle.x, vehicle.y)
         if not (-100 < center[0] < cfg.WINDOW_WIDTH + 100 and -100 < center[1] < cfg.WINDOW_HEIGHT + 100):
             return
-        width = max(28, cfg.CAR_WIDTH_PX + 8)
-        length = max(62, cfg.CAR_LENGTH_PX + 6)
+        view_scale = VIEW_RANGES[self.view_range_index]["scale"]
+        width = max(20, int((cfg.CAR_WIDTH + 0.65) * view_scale))
+        length = max(45, int((cfg.CAR_LENGTH + 0.5) * view_scale))
         car = pygame.Surface((width + 14, length + 12), pygame.SRCALPHA)
         cx = car.get_width() // 2
 
@@ -1019,9 +1128,10 @@ class GameLoop:
         right_x, right_y = -forward_y, forward_x
         lateral = dx * right_x + dy * right_y
         forward = dx * forward_x + dy * forward_y
+        scale = VIEW_RANGES[self.view_range_index]["scale"]
         return (
-            int(cfg.WINDOW_WIDTH / 2 + lateral * cfg.PX_PER_M),
-            int(cfg.WINDOW_HEIGHT * cfg.LOOK_AHEAD - forward * cfg.PX_PER_M),
+            int(cfg.WINDOW_WIDTH / 2 + lateral * scale),
+            int(cfg.WINDOW_HEIGHT * cfg.LOOK_AHEAD - forward * scale),
         )
 
     def _render_menu(self):
@@ -1043,10 +1153,11 @@ class GameLoop:
             ("CIRCUIT", f"{self.track.name}  /  {self.track.country}"),
             ("MODE", MODES[self.mode_index]),
             ("AI DIFFICULTY", DIFFICULTIES[self.difficulty_index]),
+            ("VIEW RANGE", VIEW_RANGES[self.view_range_index]["name"]),
             ("LIVERY", CAR_LIVERIES[self.livery_index]["name"]),
             ("START SESSION", "PRESS ENTER / A"),
         ]
-        start_y = 245
+        start_y = 220
         for i, (label, value) in enumerate(values):
             y = start_y + i * 65
             selected = i == self.menu_row
@@ -1120,7 +1231,7 @@ class GameLoop:
             self.track.accent,
         )
         cards = [
-            ("1  CONTROL", "W / ↑ throttle     S / ↓ brake     A D / ← → steer\nController: left stick + linear LT / RT"),
+            ("1  CONTROL", "W / ↑ throttle     S / ↓ brake     A D / ← → steer\nController: left stick + linear LT / RT     - / + changes view range"),
             ("2  READ THE LINE", "CYAN = full throttle     YELLOW = lift / prepare\nRED = brake now; target speed is shown at the marker"),
             ("3  USE THE ROAD", "Red-white kerb is driveable but unsettles the car.\nRunoff and grass reduce grip; barriers return the car safely."),
             ("4  DRIVE SMOOTHLY", "Steering lock reduces with speed. Brake in a straight line,\nrelease the brake, then turn toward the apex."),

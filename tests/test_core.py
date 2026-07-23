@@ -11,6 +11,7 @@ sys.path.insert(1, str(ROOT / "src"))
 import config as cfg
 from physics.vehicle import Vehicle
 from game.input import InputHandler
+from game.loop import AI_PROFILES, VIEW_RANGES, GameLoop
 from track.layouts import TRACK_ORDER, TRACKS
 from track.track import Track
 
@@ -96,6 +97,36 @@ class VehicleTests(unittest.TestCase):
             car.update(1 / 60, 0.0, 1.0, 0.0)
         self.assertGreaterEqual(car.gear, 7)
         self.assertGreater(car.rpm, 4000)
+
+
+class RaceFormatTests(unittest.TestCase):
+    def test_grand_prix_grid_contains_player_and_nine_ai(self):
+        self.assertEqual(len(AI_PROFILES), 9)
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("spa")
+        cars = [Vehicle() for _ in range(10)]
+        indices = [game._place_on_grid(car, slot) for slot, car in enumerate(cars)]
+        positions = {(round(car.x, 2), round(car.y, 2)) for car in cars}
+        self.assertEqual(len(positions), 10)
+        self.assertEqual(len(set(indices)), 5)
+        for row in range(5):
+            self.assertEqual(indices[row * 2], indices[row * 2 + 1])
+
+    def test_five_red_lights_illuminate_in_sequence(self):
+        game = GameLoop.__new__(GameLoop)
+        game.lights_out = False
+        expected = [(0.0, 0), (0.75, 1), (1.50, 2), (2.25, 3), (3.0, 4), (3.75, 5)]
+        for elapsed, count in expected:
+            game.start_sequence_time = elapsed
+            self.assertEqual(game._illuminated_start_lights(), count)
+        game.lights_out = True
+        self.assertEqual(game._illuminated_start_lights(), 0)
+
+    def test_view_range_options_expand_the_visible_world(self):
+        scales = [option["scale"] for option in VIEW_RANGES]
+        self.assertEqual(len(scales), 3)
+        self.assertGreater(scales[0], scales[1])
+        self.assertGreater(scales[1], scales[2])
 
 
 if __name__ == "__main__":
