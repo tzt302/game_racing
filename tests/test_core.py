@@ -136,6 +136,25 @@ class VehicleTests(unittest.TestCase):
         self.assertGreater(car.get_speed_kmh(), 360.0)
         self.assertLessEqual(car.get_speed_kmh(), cfg.MAX_SPEED)
 
+    def test_high_speed_downforce_preserves_cornering_authority(self):
+        car = Vehicle()
+        car.speed = 220.0 / 3.6
+        for _ in range(90):
+            car.update(1 / 60, 0.65, 0.55, 0.0)
+        lateral_acceleration = abs(car.yaw_rate * car.speed)
+        self.assertGreater(lateral_acceleration, 2.6 * 9.81)
+        self.assertLessEqual(abs(car.slip_angle), cfg.MAX_SLIP_ANGLE)
+
+    def test_braking_improves_turn_in_without_unstable_rotation(self):
+        coasting = Vehicle()
+        braking = Vehicle()
+        coasting.speed = braking.speed = 150.0 / 3.6
+        for _ in range(24):
+            coasting.update(1 / 60, 0.55, 0.0, 0.0)
+            braking.update(1 / 60, 0.55, 0.0, 0.18)
+        self.assertGreater(abs(braking.yaw_rate), abs(coasting.yaw_rate))
+        self.assertLess(abs(braking.slip_angle), 0.08)
+
 
 class AudioModelTests(unittest.TestCase):
     def test_v6_firing_frequency_and_equal_power_crossfade(self):

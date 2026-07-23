@@ -96,20 +96,34 @@ class Vehicle:
 
         if self.speed > 0.35:
             demanded_yaw = self.speed * math.tan(self.steer_angle) / cfg.WHEELBASE
+            brake_turn_in = 1.0 + (
+                cfg.BRAKE_TURN_IN_GRIP
+                * brake_input
+                * (1.0 - 0.45 * speed_ratio)
+            )
             lateral_accel_limit = (
                 cfg.TYRE_GRIP * surface["grip"] * 9.81
                 + cfg.AERO_GRIP * surface["grip"] * self.speed * self.speed * 9.81
-            )
+            ) * brake_turn_in
             yaw_limit = lateral_accel_limit / max(self.speed, 3.0)
             target_yaw = _clamp(demanded_yaw, -yaw_limit, yaw_limit)
 
             # Tyres build force rather than snapping instantly.  Exceeding the
-            # grip circle introduces visible, recoverable understeer/slip.
-            yaw_response = 8.8 * surface["grip"]
+            # grip circle still introduces visible slip, but increased front
+            # response and downforce prevent persistent high-speed understeer.
+            yaw_response = (
+                cfg.YAW_RESPONSE + cfg.BRAKE_YAW_RESPONSE * brake_input
+            ) * surface["grip"]
             self.yaw_rate += (target_yaw - self.yaw_rate) * min(1.0, yaw_response * dt)
             excess = demanded_yaw - target_yaw
-            target_slip = _clamp(excess * 0.075, -0.13, 0.13)
-            self.slip_angle += (target_slip - self.slip_angle) * min(1.0, 5.4 * dt)
+            target_slip = _clamp(
+                excess * cfg.SLIP_FROM_EXCESS,
+                -cfg.MAX_SLIP_ANGLE,
+                cfg.MAX_SLIP_ANGLE,
+            )
+            self.slip_angle += (target_slip - self.slip_angle) * min(
+                1.0, cfg.SLIP_BUILD_RATE * dt
+            )
             self.heading = (self.heading + self.yaw_rate * dt + math.pi) % (2 * math.pi) - math.pi
         else:
             self.yaw_rate *= max(0.0, 1.0 - 8.0 * dt)
