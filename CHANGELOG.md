@@ -1,5 +1,13 @@
 # 更新日志
 
+## v2.4.6 — Portable Security Build
+
+- 撤回会被新版 Microsoft Defender 安全情报拦截的 2.4.4 和 2.4.5 单文件 Windows EXE。
+- Windows 成品改用普通目录式便携 ZIP，不再使用运行时自解压的单文件结构。
+- 删除自动下载、暂存、覆盖并重启游戏可执行文件的更新模块；后续版本改为从 GitHub Releases 手动更新。
+- 保留 2.4.5 的手柄输入曲线和高速横向抓地修复。
+- 使用 Microsoft Defender 安全情报 `1.455.279.0` 扫描完整目录和最终 ZIP，均未发现威胁。
+
 ## v2.4.5 — Steering Authority
 
 - 移除手柄转向输入层的平方曲线，死区外摇杆行程现在保持线性，只在车辆物理层应用一次渐进曲线。

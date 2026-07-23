@@ -1,6 +1,6 @@
 """Shared configuration for Racing Line Pro."""
 
-VERSION = "2.4.5"
+VERSION = "2.4.6"
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS = 60

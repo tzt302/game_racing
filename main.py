@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Racing Line Pro ? telemetry-driven 2.5D formula racing game."""
+"""Racing Line Pro — telemetry-driven 2.5D formula racing game."""
 
 import os
 import sys
@@ -16,13 +16,6 @@ else:
 sys.path.insert(0, os.path.join(BASE_DIR, "src"))
 sys.path.insert(0, BASE_DIR)
 
-# A validated staged copy can replace the previous EXE after that process
-# exits. This path deliberately avoids a shell or PowerShell invocation.
-if getattr(sys, "frozen", False) and "--apply-update" in sys.argv:
-    from updater import run_update_helper
-
-    sys.exit(run_update_helper())
-
 # Write crashes to a log file so packaged builds remain diagnosable.
 _log_path = os.path.join(APP_DIR, "raceline_error.log")
 
@@ -31,11 +24,8 @@ try:
 
     import config as cfg
     from game.loop import GameLoop
-    from updater import AutoUpdater
 
     def main():
-        updater = AutoUpdater(cfg.VERSION, sys.executable)
-        updater.start()
         pygame.init()
         pygame.joystick.init()
         try:
@@ -47,11 +37,10 @@ try:
             )
             pygame.display.set_caption(f"Racing Line Pro v{cfg.VERSION}")
             clock = pygame.time.Clock()
-            game = GameLoop(screen, clock, updater=updater)
+            game = GameLoop(screen, clock)
             game.run()
         finally:
             pygame.quit()
-        updater.apply_on_exit()
 
     if __name__ == "__main__":
         main()

@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 4, 5, 0),
-    prodvers=(2, 4, 5, 0),
+    filevers=(2, 4, 6, 0),
+    prodvers=(2, 4, 6, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Racing Line Pro'),
           StringStruct('FileDescription', 'Racing Line Pro'),
-          StringStruct('FileVersion', '2.4.5.0'),
+          StringStruct('FileVersion', '2.4.6.0'),
           StringStruct('InternalName', 'RacingLinePro'),
           StringStruct('LegalCopyright', 'Copyright (c) 2026 tzt302'),
           StringStruct('OriginalFilename', 'RacingLinePro.exe'),
           StringStruct('ProductName', 'Racing Line Pro'),
-          StringStruct('ProductVersion', '2.4.5.0')
+          StringStruct('ProductVersion', '2.4.6.0')
         ]
       )
     ]),

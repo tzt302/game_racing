@@ -4,30 +4,36 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/tzt302/game_racing?label=latest)](https://github.com/tzt302/game_racing/releases/latest)
 [![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](https://github.com/tzt302/game_racing/releases/latest)
-[![Defender Scan](https://img.shields.io/badge/Microsoft%20Defender-no%20threats-2ea44f)](https://github.com/tzt302/game_racing/releases/tag/v2.4.5)
+[![Defender Scan](https://img.shields.io/badge/Microsoft%20Defender-v2.4.6%20portable%20passed-2ea44f)](https://github.com/tzt302/game_racing/releases/tag/v2.4.6)
 
 ## 下载
 
-推荐使用最新的 Windows 安全构建：
+推荐使用最新的 Windows 便携构建：
 
-**[下载 RacingLinePro-v2.4.5.exe](https://github.com/tzt302/game_racing/releases/download/v2.4.5/RacingLinePro-v2.4.5.exe)**
+**[下载 RacingLinePro-v2.4.6-portable.zip](https://github.com/tzt302/game_racing/releases/download/v2.4.6/RacingLinePro-v2.4.6-portable.zip)**
 
-- 文件大小：26,593,586 字节
-- SHA-256：`997EA136B2BFB8AD4625DB7D20E2502CFE1F48D0687BBABC5889F0421D2450EC`
+- 文件大小：26,601,076 字节
+- SHA-256：`63F0EAADA482E05118C769E9277349E2B797B0A0D7BEE9C80F8638691BE366B3`
 - 系统：Windows 10 / 11 64 位
-- 无需安装 Python；下载后直接运行
-- 2.4.2 及以上版本也可通过游戏内自动更新升级
+- 无需安装 Python；完整解压 ZIP 后运行文件夹内的 `RacingLinePro.exe`
+- 请勿只把 EXE 单独拖出文件夹，旁边的 `_internal` 目录是运行所必需的
 
 > [!WARNING]
-> 请勿下载或关闭杀毒软件运行 2.4.3 Windows EXE。该旧包已因 Microsoft Defender 启发式检测而撤回，请只使用 2.4.4 或之后的版本。
+> 2.4.3、2.4.4 和 2.4.5 的单文件 Windows EXE 均已撤回。Microsoft Defender 最新病毒库会拦截这些旧包；请勿关闭杀毒软件、添加白名单或恢复隔离文件。2.4.6 改用不自解压的目录式 ZIP，并删除了自动下载和替换自身的更新程序。
 
-## v2.4.5 转向能力修复
+## v2.4.6 安全打包修复
+
+2.4.6 保留 2.4.5 的全部转向修复，但不再发布 PyInstaller 单文件自解压 EXE。游戏改为普通目录式便携包，运行文件、Python 运行库和资源分别存放；同时彻底移除下载、暂存、覆盖并重启游戏自身的自动更新代码。后续版本请从本项目的 GitHub Releases 页面手动获取。
+
+发布前完成 38 项自动化测试、目录式成品窗口启动验证，并使用 Microsoft Defender 安全情报 `1.455.279.0` 分别扫描完整目录和最终 ZIP，结果均为 `found no threats`。
+
+## v2.4.5 转向能力修复（Windows EXE 已撤回）
 
 2.4.5 修复手柄转向被输入层与物理层重复衰减的问题：摇杆死区外的物理行程不再先做平方处理，只保留车辆物理中的单一渐进曲线。高速下压力同步重新标定，300 km/h 的可用横向能力由约 3.6 G 提升至约 5.7 G；五条内置赛道至少 90% 的参考圈采样点现已处于车辆可达范围内。低速机械抓地、最大机械舵角和转向齿条响应保持不变。
 
-发布前已完成 43 项自动化测试、打包版真实窗口启动验证，并使用 Microsoft Defender 自定义扫描确认 `found no threats`。
+2.4.5 发布后的新版 Microsoft Defender 安全情报将其单文件 EXE 检测为 `Trojan:Win32/Wacatac.B!ml`。该资产已撤回；不要恢复或运行被隔离的旧文件。转向代码修复已完整包含在 2.4.6 中。
 
-## v2.4.4 Windows 安全构建
+## v2.4.4 Windows 安全构建（Windows EXE 已撤回）
 
 针对 2.4.3 被 Microsoft Defender 启发式判定为 `Trojan:Win32/Wacatac.B!ml` 的问题，2.4.4 移除了隐藏 PowerShell 更新流程与 UPX 压缩，并精简无关打包模块、加入标准 Windows 版本资源。自动更新仍校验 GitHub Release 来源、文件名、大小和 SHA-256，但替换动作由受限的游戏自身更新助手完成，不再调用命令行外壳。
 
@@ -119,10 +125,10 @@ python main.py
 python -m unittest discover -s tests -v
 ```
 
-构建 Windows EXE：
+构建 Windows 便携目录：
 
 ```powershell
-pyinstaller --noconfirm --clean RacingLinePro.spec
+pyinstaller --noconfirm --clean RacingLinePro-portable.spec
 ```
 
 重新导入 FastF1 遥测（仅开发者需要）：
