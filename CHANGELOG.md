@@ -1,5 +1,12 @@
 # 更新日志
 
+## v2.4.1 — Windows Startup Hotfix
+
+- 修复 PyInstaller 未在分析阶段加入 `src` 模块搜索路径的问题。
+- Windows 单文件版现在会正确收集 `game`、`ai`、`physics`、`track` 和 `ui` 包。
+- 打包验证升级为检查真实游戏窗口标题，不再把崩溃错误对话框误判为“进程仍在运行”。
+- 保持 2.4.0 的操控、计时与无音频发行策略不变。
+
 ## v2.4.0 — Realistic Steering and Timing
 
 原计划中的 2.3.3—2.3.6 改进统一归入 2.4.0，不单独公开发布。

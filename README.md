@@ -2,6 +2,11 @@
 
 使用 Python 与 Pygame 制作的轻量级方程式赛车游戏。
 
+## v2.4.1 启动热修复
+
+修复 2.4.0 Windows 单文件版遗漏 `game` Python 包、启动时报
+`ModuleNotFoundError: No module named 'game'` 的问题。游戏内容和操控参数保持不变。
+
 ## v2.4.0 真实操控与计时整合更新
 
 2.4.0 统一整合原计划中的 2.3.3—2.3.6 改进：重新设计转向输入与轮胎响应，

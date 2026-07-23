@@ -3,7 +3,9 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [
     ('config.py', '.'),
-    ('src/track/telemetry_layouts.json', 'src/track'),
+    # Frozen ``track.track`` lives at ``_MEIPASS/track`` rather than
+    # ``_MEIPASS/src/track``, so its adjacent JSON must use the same prefix.
+    ('src/track/telemetry_layouts.json', 'track'),
 ]
 binaries = []
 hiddenimports = []
@@ -15,7 +17,10 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    # main.py adds ``src`` to sys.path at runtime. PyInstaller also needs the
+    # same path during static analysis, otherwise top-level packages such as
+    # ``game`` are omitted from the one-file executable.
+    pathex=['src'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
