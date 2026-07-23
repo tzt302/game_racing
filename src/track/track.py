@@ -43,6 +43,7 @@ class Track:
         self.kerb_left_edges = []
         self.kerb_right_edges = []
         self.racing_line = []
+        self.racing_line_offsets = []
         self.recommended_speeds = []
         self.brake_zones = []
         self.brake_zone_indices = set()
@@ -164,10 +165,76 @@ class Track:
             self.kerb_right_edges.append((x - nx * outer, y - ny * outer))
 
     def _build_racing_line(self):
-        # The imported coordinates are the actual fastest qualifying lap path,
-        # so unlike the old curvature heuristic this is already a measured
-        # outside-apex-exit racing line.
-        self.racing_line = [(p[0], p[1]) for p in self.center_points]
+        # Build a continuous outside-apex-outside path. Candidate apexes are
+        # curvature peaks from the real qualifying trace; Gaussian entry,
+        # apex, and exit targets blend neighbouring corners without abrupt
+        # lateral jumps.
+        count = len(self.center_points)
+        candidates = []
+        for index, point in enumerate(self.center_points):
+            curvature = abs(point[3])
+            if curvature < 0.0035:
+                continue
+            neighbourhood = [
+                abs(self.center_points[(index + delta) % count][3])
+                for delta in range(-10, 11)
+            ]
+            if curvature >= max(neighbourhood):
+                candidates.append((curvature, index))
+
+        apexes = []
+        minimum_gap = max(12, int(70.0 / self.SAMPLE_METRES))
+        for strength, index in sorted(candidates, reverse=True):
+            if all(
+                min((index - other) % count, (other - index) % count) >= minimum_gap
+                for _, other in apexes
+            ):
+                apexes.append((strength, index))
+
+        usable_half_width = max(
+            1.0,
+            self.width * 0.5 - cfg.CAR_WIDTH * 0.5 - 0.65,
+        )
+        offsets = [0.0] * count
+
+        def circular_delta(index, center):
+            delta = (index - center) % count
+            return delta - count if delta > count * 0.5 else delta
+
+        def gaussian(delta, sigma):
+            return math.exp(-0.5 * (delta / sigma) ** 2)
+
+        for strength, apex in apexes:
+            turn = 1.0 if self.center_points[apex][3] > 0.0 else -1.0
+            severity = max(0.42, min(1.0, strength / 0.030))
+            entry = (apex - 18) % count
+            exit_index = (apex + 16) % count
+            inside_amount = usable_half_width * (0.58 + severity * 0.20)
+            outside_amount = usable_half_width * (0.42 + severity * 0.16)
+            for index in range(count):
+                offsets[index] += turn * (
+                    inside_amount * gaussian(circular_delta(index, apex), 7.0)
+                    - outside_amount * gaussian(circular_delta(index, entry), 10.0)
+                    - outside_amount * gaussian(circular_delta(index, exit_index), 10.0)
+                )
+
+        # Circular smoothing provides a steering-friendly line through linked
+        # corners while the clamp keeps the car inside the usable road.
+        for _ in range(4):
+            offsets = [
+                sum(offsets[(index + delta) % count] for delta in range(-2, 3)) / 5.0
+                for index in range(count)
+            ]
+        self.racing_line_offsets = [
+            max(-usable_half_width, min(usable_half_width, offset))
+            for offset in offsets
+        ]
+        self.racing_line = []
+        for point, offset in zip(self.center_points, self.racing_line_offsets):
+            normal_x, normal_y = -math.sin(point[2]), math.cos(point[2])
+            self.racing_line.append(
+                (point[0] + normal_x * offset, point[1] + normal_y * offset)
+            )
         self.recommended_speeds = list(self.reference_speed)
         self.lift_zone_indices = {
             i

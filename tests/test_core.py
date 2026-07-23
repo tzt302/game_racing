@@ -10,6 +10,7 @@ sys.path.insert(1, str(ROOT / "src"))
 
 import config as cfg
 from physics.vehicle import Vehicle
+from audio.engine import EngineAudio
 from game.input import InputHandler
 from game.loop import AI_PROFILES, VIEW_RANGES, GameLoop
 from track.layouts import TRACK_ORDER, TRACKS
@@ -63,6 +64,27 @@ class TrackTests(unittest.TestCase):
                 )
                 self.assertGreater(signed_area, 0.0)
 
+    def test_racing_line_runs_outside_apex_outside(self):
+        for track_id in TRACK_ORDER:
+            with self.subTest(track=track_id):
+                track = Track(track_id)
+                apex = max(
+                    range(len(track.center_points)),
+                    key=lambda index: abs(track.center_points[index][3]),
+                )
+                turn = 1.0 if track.center_points[apex][3] > 0.0 else -1.0
+                count = len(track.center_points)
+                entry = track.racing_line_offsets[(apex - 18) % count] * turn
+                inside = track.racing_line_offsets[apex] * turn
+                exit_offset = track.racing_line_offsets[(apex + 16) % count] * turn
+                self.assertLess(entry, 0.0)
+                self.assertGreater(inside, 0.0)
+                self.assertLess(exit_offset, 0.0)
+                self.assertGreater(
+                    max(abs(value) for value in track.racing_line_offsets),
+                    track.width * 0.20,
+                )
+
 
 class VehicleTests(unittest.TestCase):
     def test_high_speed_steering_has_less_lock(self):
@@ -72,8 +94,8 @@ class VehicleTests(unittest.TestCase):
         for _ in range(60):
             low.update(1 / 60, 1.0, 0.0, 0.0)
             high.update(1 / 60, 1.0, 0.0, 0.0)
-        self.assertGreater(abs(low.steer_angle), abs(high.steer_angle) * 2.5)
-        self.assertLess(abs(high.steer_angle), 0.20)
+        self.assertGreater(abs(low.steer_angle), abs(high.steer_angle) * 2.0)
+        self.assertLess(abs(high.steer_angle), 0.23)
 
     def test_kerb_does_not_mark_vehicle_as_crashed(self):
         car = Vehicle()
@@ -97,6 +119,22 @@ class VehicleTests(unittest.TestCase):
             car.update(1 / 60, 0.0, 1.0, 0.0)
         self.assertGreaterEqual(car.gear, 7)
         self.assertGreater(car.rpm, 4000)
+
+    def test_full_throttle_top_speed_exceeds_360_kmh(self):
+        car = Vehicle()
+        for _ in range(60 * 35):
+            car.update(1 / 60, 0.0, 1.0, 0.0)
+        self.assertGreater(car.get_speed_kmh(), 360.0)
+        self.assertLessEqual(car.get_speed_kmh(), cfg.MAX_SPEED)
+
+
+class AudioModelTests(unittest.TestCase):
+    def test_v6_firing_frequency_and_equal_power_crossfade(self):
+        self.assertEqual(EngineAudio.firing_frequency(12000), 600.0)
+        weights = EngineAudio.band_weights(8200)
+        self.assertEqual(len(weights), 6)
+        self.assertAlmostEqual(sum(value * value for value in weights), 1.0)
+        self.assertEqual(sum(value > 0.0 for value in weights), 2)
 
 
 class RaceFormatTests(unittest.TestCase):

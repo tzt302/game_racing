@@ -83,7 +83,7 @@ class Vehicle:
         delta = _clamp(target_steer - self.steer_angle, -response * dt, response * dt)
         self.steer_angle += delta
 
-        engine_fade = 1.0 - 0.58 * speed_ratio ** 1.7
+        engine_fade = 1.0 - 0.42 * speed_ratio ** 1.7
         engine = throttle_input * cfg.ACCEL_FORCE * engine_fade * surface["drive"]
         if self.shift_timer > 0.0:
             engine *= 0.25
@@ -105,11 +105,11 @@ class Vehicle:
 
             # Tyres build force rather than snapping instantly.  Exceeding the
             # grip circle introduces visible, recoverable understeer/slip.
-            yaw_response = 7.5 * surface["grip"]
+            yaw_response = 8.8 * surface["grip"]
             self.yaw_rate += (target_yaw - self.yaw_rate) * min(1.0, yaw_response * dt)
             excess = demanded_yaw - target_yaw
-            target_slip = _clamp(excess * 0.11, -0.16, 0.16)
-            self.slip_angle += (target_slip - self.slip_angle) * min(1.0, 4.5 * dt)
+            target_slip = _clamp(excess * 0.075, -0.13, 0.13)
+            self.slip_angle += (target_slip - self.slip_angle) * min(1.0, 5.4 * dt)
             self.heading = (self.heading + self.yaw_rate * dt + math.pi) % (2 * math.pi) - math.pi
         else:
             self.yaw_rate *= max(0.0, 1.0 - 8.0 * dt)
@@ -121,8 +121,8 @@ class Vehicle:
 
     def _update_gearbox(self):
         speed_kmh = self.get_speed_kmh()
-        upper_bounds = [72, 112, 154, 198, 242, 286, 326, 370]
-        lower_bounds = [0, 52, 88, 126, 166, 207, 248, 288]
+        upper_bounds = [78, 122, 168, 216, 266, 314, 354, 398]
+        lower_bounds = [0, 56, 96, 136, 178, 224, 272, 318]
         desired = self.gear
         while desired < 8 and speed_kmh > upper_bounds[desired - 1]:
             desired += 1
@@ -136,7 +136,7 @@ class Vehicle:
         lower = lower_bounds[self.gear - 1]
         upper = upper_bounds[self.gear - 1]
         ratio = _clamp((speed_kmh - lower) / max(upper - lower, 1.0), 0.0, 1.0)
-        self.rpm = int(4300 + ratio * 8300)
+        self.rpm = int(4200 + ratio * 8800)
 
     def get_speed_kmh(self):
         return self.speed * 3.6

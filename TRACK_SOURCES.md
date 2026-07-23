@@ -37,8 +37,10 @@ from a public-domain recording and published under CC0:
 
 [OpenGameArt — racing car engine sound loops](https://opengameart.org/content/racing-car-engine-sound-loops)
 
-Gear-shift and tyre scrub transients are synthesized at runtime and do not
-contain third-party recordings.
+Version 2.2 layers these recordings under a runtime-generated four-stroke V6
+combustion model. The harmonic engine layers, turbo whistle, overrun crackle,
+gear-shift ignition cut, and tyre scrub are synthesized locally and do not
+contain additional third-party recordings.
 
 ## Disclaimer
 
