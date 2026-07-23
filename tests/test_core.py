@@ -172,6 +172,27 @@ class VehicleTests(unittest.TestCase):
         self.assertLessEqual(lateral_acceleration, available_grip * 1.01)
         self.assertLessEqual(abs(car.slip_angle), cfg.MAX_SLIP_ANGLE)
 
+    def test_v243_downforce_reduces_high_speed_understeer(self):
+        car = Vehicle()
+        car.speed = 260.0 / 3.6
+        for _ in range(90):
+            car.update(1 / 60, 0.65, 0.50, 0.0)
+        lateral_g = abs(car.yaw_rate * car.speed) / 9.81
+        self.assertGreater(lateral_g, 2.50)
+        self.assertLess(abs(car.slip_angle), 0.02)
+
+    def test_v243_downforce_gain_is_speed_progressive(self):
+        low_speed = Vehicle()
+        high_speed = Vehicle()
+        low_speed.speed = 80.0 / 3.6
+        high_speed.speed = 280.0 / 3.6
+        low_total = low_speed.get_lateral_grip_limit(0.0, 0.0) / 9.81
+        high_total = high_speed.get_lateral_grip_limit(0.0, 0.0) / 9.81
+        low_aero = low_total - cfg.TYRE_GRIP
+        high_aero = high_total - cfg.TYRE_GRIP
+        self.assertLess(low_aero, 0.15)
+        self.assertGreater(high_aero, low_aero * 10.0)
+
     def test_braking_consumes_lateral_grip_through_friction_circle(self):
         car = Vehicle()
         car.speed = 220.0 / 3.6

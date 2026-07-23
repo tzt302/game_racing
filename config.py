@@ -1,6 +1,6 @@
 """Shared configuration for Racing Line Pro."""
 
-VERSION = "2.4.2"
+VERSION = "2.4.3"
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS = 60
@@ -54,7 +54,7 @@ UNDERSTEER_GRADIENT = 0.00011
 # authority through medium and high-speed bends. Tyre force builds over a
 # relaxation length and longitudinal input consumes part of the friction circle.
 TYRE_GRIP = 2.04
-AERO_GRIP = 0.00019
+AERO_GRIP = 0.00023
 TYRE_RELAXATION_LENGTH = 3.0
 BRAKE_GRIP_USAGE = 0.78
 THROTTLE_GRIP_USAGE = 0.20
