@@ -42,7 +42,7 @@
 发布前验证：
 
 - 40 项自动化测试全部通过
-- Microsoft Defender 4.18.26060.3008-0 自定义扫描：`found no threats`
+- 发布时的 Defender 扫描曾返回 `found no threats`，但后续安全情报已重新判定该单文件 EXE；此历史结果已经失效，资产现已撤回
 - EXE 产品版本：`2.4.4.0`
 - 自动更新不再调用 PowerShell、`cmd.exe` 或其他命令行外壳
 
