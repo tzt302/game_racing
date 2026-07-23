@@ -7,3 +7,7 @@ venv/
 *.egg-info/
 dist/
 build/
+.cache/
+raceline_stdout.log
+raceline_stderr.log
+raceline_error.log

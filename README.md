@@ -1,190 +1,57 @@
-# Racing Line Pro 🏁
+# Racing Line Pro — Telemetry Edition
 
-**一款独立超级轻量化2D赛车游戏** — 俯视角卷轴赛车，黑白极简画风，支持键盘与手柄。
+使用 Python 与 Pygame 制作的轻量级方程式赛车游戏。
 
-![Game Screenshot](assets/screenshot.png)
-*游戏中实机截图：俯视角赛道、实时HUD、黑白极简画风*
+## 核心功能
 
----
+- **真实遥测赛道**：斯帕、银石、蒙扎、摩纳哥和上海均基于 2025 排位赛最快圈 X/Y/Z 遥测，每约 5 米一个采样点。
+- **真实驾驶参考**：赛车线、刹车、收油、目标速度、挡位和 RPM 均取自对应排位赛圈。
+- **F1 三计时段**：真实 Sector 1/2 分界、毫秒计时，以及紫色全场最快、绿色个人提升、黄色未提升状态。
+- **完整成绩比较**：分段时间、个人最快圈和全场最快圈/车手实时显示。
+- **线性模拟输入**：LT/RT 从 0% 到 100% 完整映射物理行程。
+- **速度相关物理**：渐进转向、轮胎抓地极限、侧滑、自动 8 挡变速箱和换挡动力中断。
+- **多车 AI**：五名具有不同速度、侵略性和稳定性的 AI，会尝试超车、发生小失误并进行车体接触。
+- **动态声音**：六层 CC0 发动机循环随 RPM 交叉混合，并包含换挡、轮胎和路面反馈。
+- **三种视角**：高位 Halo T-Cam、低位 2.5D 驾驶舱与旋转俯视追踪视角可随时切换。
+- **完整赛道表面**：沥青、红白路肩、缓冲区、草地和护栏具有不同交互。
 
-## 游戏特色
+## 操作
 
-### 🏎️ 核心玩法
-- **俯视角卷轴赛车** — 车辆从屏幕下方驶向上方，赛道随车辆前进滚动
-- **真实比例** — 车辆与赛道按真实赛车比例缩放（1m = 40px）
-- **AI 对战** — AI 对手实时竞速，智能过弯与走线
-- **经典驾驶操控** — 油门 / 刹车 / 转向踏板
-- **理想赛车线** — 赛道内绘制最佳过弯路径
-- **刹车点提示** — 入弯前标注刹车区域
-
-### 🎮 手柄支持
-- **Xbox / PlayStation / 通用手柄** — 即插即用
-- **左摇杆** — 转向控制
-- **右扳机 (RT)** — 油门
-- **左扳机 (LT)** — 刹车
-- **方向键上下** — 油门 / 刹车
-- **A 键** — 重置车辆位置
-
-### ⌨️ 键盘控制
-
-| 按键 | 操作 |
-|------|------|
+| 按键 | 功能 |
+| --- | --- |
 | `W` / `↑` | 油门 |
 | `S` / `↓` | 刹车 |
-| `A` / `←` | 左转向 |
-| `D` / `→` | 右转向 |
-| `R` | 重置位置 / 重新开始 |
+| `A D` / `← →` | 转向 |
+| `C` / `V` | 循环切换 T-Cam、驾驶舱和俯视视角 |
+| `R` | 回到赛道 / 重新开始 |
 | `Esc` | 暂停 |
+| `F1` | 打开车手指南 |
+| `L` | 显示或隐藏赛车线 |
+| `B` | 显示或隐藏刹车标记 |
 
-### 📊 实时 HUD
+手柄默认使用左摇杆转向、RT 线性油门、LT 线性刹车、A 确认/回到赛道、Start 暂停。
 
-![HUD Layout](assets/hud_detail.png)
+## 运行与测试
 
-| 元素 | 说明 |
-|------|------|
-| **SPEED** | 实时车速 (km/h)，附带进度条 |
-| **RPM** | 10段 LED 转速光条 |
-| **GEAR** | 模拟档位显示 |
-| **LAP** | 当前圈数 / 总圈数 |
-| **POS** | 当前位置（1st / 2nd） |
-| **GAS / BRK** | 踏板力度指示器 |
-| **MINIMAP** | 赛道小地图 + 车辆位置 |
-| **LAST / BEST** | 上一圈 / 最佳圈速 |
-
----
-
-## 技术架构
-
-### 🚗 物理引擎（2D Bicycle Model）
-
-采用经典自行车模型作为车辆动力学核心，开源实现：
-
-```
-x += v * cos(theta) * dt
-y += v * sin(theta) * dt
-theta += v * tan(delta) / L * dt         // 横摆角
-v += (throttle * accel - brake * brake_force
-      - drag * v^2 - rolling_resistance) * dt
-delta += (target - delta) / steer_response  // 转向滞后
-```
-
-**关键物理参数：**
-- `L = 2.6m` — 轴距
-- `accel = 15 m/s²` — 最大加速度
-- `brake = 30 m/s²` — 最大制动减速度
-- `drag = 0.0015` — 空气阻力系数（限极速~350 km/h）
-- `max_steer = 0.6 rad` — 最大转向角
-
-**刹车点计算：**
-```
-brake_distance = v² / (2 * μ * g) + safety_margin
-```
-
-### 🤖 AI 对手
-- **动态预瞄** — 根据车速自动调整预瞄距离
-- **曲线预判** — 提前检测前方弯道曲率，自动调整速度
-- **三档难度** — EASY / NORMAL / HARD
-
-### 🛤️ 赛道系统
-- **样条曲线赛道生成** — 8段式赛道（4条直道 + 4个弯道）
-- **总长约 846m** — 圈速约 12-15 秒
-- **内置数据** — 理想走线 / 刹车区域 / 曲率图
-
----
-
-## 快速开始
-
-```bash
-# 克隆仓库
-git clone https://github.com/tzt302/game_racing.git
-cd game_racing
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动游戏
+```powershell
+python -m pip install -r requirements.txt
 python main.py
+python -m unittest discover -s tests -v
 ```
 
-### 依赖
-- Python 3.10+
-- Pygame 2.5+
-- NumPy
+构建 Windows EXE：
 
----
-
-## 项目结构
-
-```
-game_racing/
-├── main.py                 # 游戏入口
-├── config.py               # 配置与常量
-├── requirements.txt        # 依赖
-├── assets/                 # 图片资源
-│   ├── screenshot.png      # 游戏截图
-│   ├── gameplay_mockup.png # 概念设计图
-│   └── architecture.png    # 架构图
-├── src/
-│   ├── physics/
-│   │   ├── vehicle.py      # 车辆动力学（Bicycle Model）
-│   │   └── __init__.py
-│   ├── track/
-│   │   ├── track.py        # 赛道生成与管理
-│   │   └── __init__.py
-│   ├── ai/
-│   │   ├── opponent.py     # AI 对手（路径跟随 + 速度控制）
-│   │   └── __init__.py
-│   ├── ui/
-│   │   ├── hud.py          # HUD 渲染
-│   │   └── __init__.py
-│   └── game/
-│       ├── loop.py         # 游戏主循环
-│       ├── input.py        # 输入处理（键盘 + 手柄）
-│       └── __init__.py
-└── README.md
+```powershell
+pyinstaller --noconfirm --clean RacingLinePro.spec
 ```
 
----
+重新导入 FastF1 遥测（仅开发者需要）：
 
-## 开发路线图
+```powershell
+python -m pip install -r requirements-dev.txt
+python tools/import_fastf1_tracks.py
+```
 
-### Phase 1 — 核心框架 ✅
-- [x] 项目骨架与模块结构
-- [x] 物理引擎（Bicycle Model）
-- [x] AI 对手基础实现
-- [x] 赛道生成系统
-- [x] HUD 与 UI
-- [x] 键盘 + 手柄输入支持
+数据、音频来源和许可信息见 [TRACK_SOURCES.md](TRACK_SOURCES.md)。
 
-### Phase 2 — 打磨与扩展 🔄
-- [ ] 多圈计时与排名
-- [ ] 赛后数据统计
-- [ ] 更具挑战性的赛道布局
-- [ ] 碰撞动画与视觉反馈
-- [ ] 圈速排行榜（本地）
-
-### Phase 3 — 进阶功能
-- [ ] 赛道编辑器
-- [ ] 回放系统
-- [ ] 多种赛车选择（不同操控特性）
-- [ ] 联网对战
-
----
-
-## 开源物理参考
-
-车辆物理模型参考：
-- [2D Bicycle Model](https://github.com/topics/bicycle-model) — 车辆动力学仿真
-- [Pygame Vehicle Physics](https://github.com/topics/pygame-physics) — 社区物理示例
-
-> 物理引擎采用 MIT 协议，完全开源可修改。
-
----
-
-## 许可证
-
-MIT License © 2026 tzt302
-
----
-
-*截图中的画面为游戏实际渲染效果，最终版本可能会有所调整。*
+本项目是非官方作品，与 Formula 1、车队、车手或任何赛道运营方无关联。

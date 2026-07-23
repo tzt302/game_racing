@@ -20,6 +20,11 @@ class InputHandler:
         except Exception as e:
             print(f'No gamepad: {e}')
 
+    @staticmethod
+    def linear_trigger(raw_value):
+        value = max(0.0, min(1.0, (float(raw_value) + 1.0) * 0.5))
+        return 0.0 if value < 0.01 else value
+
     def update(self, events):
         self.steer = 0.0
         self.throttle = 0.0
@@ -57,18 +62,22 @@ class InputHandler:
             try:
                 jx = self.joystick.get_axis(0)
                 if abs(jx) > cfg.GAMEPAD_DEADZONE:
-                    self.steer = jx
-                rt = self.joystick.get_axis(5)  # RT (right trigger)
-                if rt > cfg.GAMEPAD_DEADZONE:
-                    self.throttle = (rt + 1.0) / 2.0
-                lt = self.joystick.get_axis(4)  # LT (left trigger)
-                if lt > cfg.GAMEPAD_DEADZONE:
-                    self.brake = (lt + 1.0) / 2.0
+                    normalized = (abs(jx) - cfg.GAMEPAD_DEADZONE) / (1.0 - cfg.GAMEPAD_DEADZONE)
+                    self.steer = normalized * normalized * (1 if jx > 0 else -1)
+                if self.joystick.get_numaxes() > 5:
+                    rt = self.joystick.get_axis(5)
+                    # Xbox/modern controller triggers report -1 at rest and +1
+                    # at full travel. Preserve the complete physical travel
+                    # linearly; only trim tiny endpoint noise.
+                    self.throttle = max(self.throttle, self.linear_trigger(rt))
+                if self.joystick.get_numaxes() > 4:
+                    lt = self.joystick.get_axis(4)
+                    self.brake = max(self.brake, self.linear_trigger(lt))
                 # DPAD up = throttle, down = brake
                 hat = self.joystick.get_hat(0)
                 if hat[1] > 0:
                     self.throttle = max(self.throttle, hat[1])
                 if hat[1] < 0:
                     self.brake = max(self.brake, abs(hat[1]))
-            except:
-                pass
+            except (pygame.error, IndexError):
+                self.joystick = None
