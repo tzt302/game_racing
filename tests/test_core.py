@@ -94,6 +94,22 @@ class TrackTests(unittest.TestCase):
                     track.width * 0.20,
                 )
 
+    def test_reference_laps_fit_v245_cornering_envelope(self):
+        for track_id in TRACK_ORDER:
+            track = Track(track_id)
+            reachable = 0
+            for point, speed_kmh in zip(
+                track.center_points, track.reference_speed
+            ):
+                speed = speed_kmh / 3.6
+                required_g = abs(point[3]) * speed * speed / 9.81
+                available_g = cfg.TYRE_GRIP + cfg.AERO_GRIP * speed * speed
+                reachable += required_g <= available_g
+            with self.subTest(track=track_id):
+                self.assertGreaterEqual(
+                    reachable / len(track.center_points), 0.90
+                )
+
 
 class VehicleTests(unittest.TestCase):
     def test_high_speed_steering_has_less_lock(self):
@@ -120,6 +136,17 @@ class VehicleTests(unittest.TestCase):
         self.assertAlmostEqual(InputHandler.linear_trigger(0.0), 0.5)
         self.assertAlmostEqual(InputHandler.linear_trigger(0.5), 0.75)
         self.assertEqual(InputHandler.linear_trigger(1.0), 1.0)
+
+    def test_gamepad_steering_uses_one_progressive_curve_only(self):
+        deadzone = cfg.GAMEPAD_DEADZONE
+        self.assertEqual(InputHandler.steering_axis(0.08, deadzone), 0.0)
+        self.assertAlmostEqual(InputHandler.steering_axis(1.0, deadzone), 1.0)
+        self.assertAlmostEqual(InputHandler.steering_axis(-1.0, deadzone), -1.0)
+        expected = (0.65 - deadzone) / (1.0 - deadzone)
+        self.assertAlmostEqual(
+            InputHandler.steering_axis(0.65, deadzone), expected
+        )
+        self.assertGreater(expected, 0.55)
 
     def test_automatic_f1_gearbox_reaches_high_gears(self):
         car = Vehicle()
@@ -172,16 +199,16 @@ class VehicleTests(unittest.TestCase):
         self.assertLessEqual(lateral_acceleration, available_grip * 1.01)
         self.assertLessEqual(abs(car.slip_angle), cfg.MAX_SLIP_ANGLE)
 
-    def test_v243_downforce_reduces_high_speed_understeer(self):
+    def test_v245_downforce_reduces_high_speed_understeer(self):
         car = Vehicle()
         car.speed = 260.0 / 3.6
         for _ in range(90):
             car.update(1 / 60, 0.65, 0.50, 0.0)
         lateral_g = abs(car.yaw_rate * car.speed) / 9.81
-        self.assertGreater(lateral_g, 2.50)
+        self.assertGreater(lateral_g, 3.20)
         self.assertLess(abs(car.slip_angle), 0.02)
 
-    def test_v243_downforce_gain_is_speed_progressive(self):
+    def test_v245_downforce_gain_is_speed_progressive(self):
         low_speed = Vehicle()
         high_speed = Vehicle()
         low_speed.speed = 80.0 / 3.6
@@ -190,8 +217,23 @@ class VehicleTests(unittest.TestCase):
         high_total = high_speed.get_lateral_grip_limit(0.0, 0.0) / 9.81
         low_aero = low_total - cfg.TYRE_GRIP
         high_aero = high_total - cfg.TYRE_GRIP
-        self.assertLess(low_aero, 0.15)
+        self.assertLess(low_aero, 0.30)
         self.assertGreater(high_aero, low_aero * 10.0)
+
+    def test_v245_has_formula_car_high_speed_cornering_capacity(self):
+        car = Vehicle()
+        expected_minimum_g = {
+            120.0: 2.55,
+            180.0: 3.25,
+            220.0: 3.90,
+            260.0: 4.65,
+            300.0: 5.55,
+        }
+        for speed_kmh, minimum_g in expected_minimum_g.items():
+            with self.subTest(speed_kmh=speed_kmh):
+                car.speed = speed_kmh / 3.6
+                available_g = car.get_lateral_grip_limit(0.0, 0.0) / 9.81
+                self.assertGreater(available_g, minimum_g)
 
     def test_braking_consumes_lateral_grip_through_friction_circle(self):
         car = Vehicle()

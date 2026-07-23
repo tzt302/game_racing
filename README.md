@@ -4,22 +4,28 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/tzt302/game_racing?label=latest)](https://github.com/tzt302/game_racing/releases/latest)
 [![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](https://github.com/tzt302/game_racing/releases/latest)
-[![Defender Scan](https://img.shields.io/badge/Microsoft%20Defender-no%20threats-2ea44f)](https://github.com/tzt302/game_racing/releases/tag/v2.4.4)
+[![Defender Scan](https://img.shields.io/badge/Microsoft%20Defender-no%20threats-2ea44f)](https://github.com/tzt302/game_racing/releases/tag/v2.4.5)
 
 ## 下载
 
 推荐使用最新的 Windows 安全构建：
 
-**[下载 RacingLinePro-v2.4.4.exe](https://github.com/tzt302/game_racing/releases/download/v2.4.4/RacingLinePro-v2.4.4.exe)**
+**[下载 RacingLinePro-v2.4.5.exe](https://github.com/tzt302/game_racing/releases/download/v2.4.5/RacingLinePro-v2.4.5.exe)**
 
-- 文件大小：26,593,381 字节
-- SHA-256：`7E0EC6A30A6ADCD4B846A41DB5B561D31BC655B4DF04E867D89855872BBF649B`
+- 文件大小：26,593,586 字节
+- SHA-256：`997EA136B2BFB8AD4625DB7D20E2502CFE1F48D0687BBABC5889F0421D2450EC`
 - 系统：Windows 10 / 11 64 位
 - 无需安装 Python；下载后直接运行
 - 2.4.2 及以上版本也可通过游戏内自动更新升级
 
 > [!WARNING]
 > 请勿下载或关闭杀毒软件运行 2.4.3 Windows EXE。该旧包已因 Microsoft Defender 启发式检测而撤回，请只使用 2.4.4 或之后的版本。
+
+## v2.4.5 转向能力修复
+
+2.4.5 修复手柄转向被输入层与物理层重复衰减的问题：摇杆死区外的物理行程不再先做平方处理，只保留车辆物理中的单一渐进曲线。高速下压力同步重新标定，300 km/h 的可用横向能力由约 3.6 G 提升至约 5.7 G；五条内置赛道至少 90% 的参考圈采样点现已处于车辆可达范围内。低速机械抓地、最大机械舵角和转向齿条响应保持不变。
+
+发布前已完成 43 项自动化测试、打包版真实窗口启动验证，并使用 Microsoft Defender 自定义扫描确认 `found no threats`。
 
 ## v2.4.4 Windows 安全构建
 

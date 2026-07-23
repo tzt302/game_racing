@@ -25,6 +25,16 @@ class InputHandler:
         value = max(0.0, min(1.0, (float(raw_value) + 1.0) * 0.5))
         return 0.0 if value < 0.01 else value
 
+    @staticmethod
+    def steering_axis(raw_value, deadzone):
+        """Remove stick deadzone without applying a second steering curve."""
+        raw_value = max(-1.0, min(1.0, float(raw_value)))
+        deadzone = max(0.0, min(0.95, float(deadzone)))
+        if abs(raw_value) <= deadzone:
+            return 0.0
+        normalized = (abs(raw_value) - deadzone) / (1.0 - deadzone)
+        return normalized if raw_value > 0.0 else -normalized
+
     def update(self, events):
         self.steer = 0.0
         self.throttle = 0.0
@@ -61,9 +71,7 @@ class InputHandler:
         if self.joystick:
             try:
                 jx = self.joystick.get_axis(0)
-                if abs(jx) > cfg.GAMEPAD_DEADZONE:
-                    normalized = (abs(jx) - cfg.GAMEPAD_DEADZONE) / (1.0 - cfg.GAMEPAD_DEADZONE)
-                    self.steer = normalized * normalized * (1 if jx > 0 else -1)
+                self.steer = self.steering_axis(jx, cfg.GAMEPAD_DEADZONE)
                 if self.joystick.get_numaxes() > 5:
                     rt = self.joystick.get_axis(5)
                     # Xbox/modern controller triggers report -1 at rest and +1

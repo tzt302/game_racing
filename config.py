@@ -1,6 +1,6 @@
 """Shared configuration for Racing Line Pro."""
 
-VERSION = "2.4.4"
+VERSION = "2.4.5"
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 FPS = 60
@@ -43,7 +43,7 @@ ENGINE_BRAKE_LOW_SPEED_MS = 14.0
 # steering angles used through fast corners.
 STEER_LOCK = 0.48
 STEER_INPUT_EXPONENT = 1.35
-STEER_G_DEMAND = 0.96
+STEER_G_DEMAND = 1.00
 STEER_LOW_SPEED_BLEND_MS = 15.0
 STEER_RACK_RATE_LOW = 3.0
 STEER_RACK_RATE_HIGH = 1.35
@@ -54,7 +54,7 @@ UNDERSTEER_GRADIENT = 0.00011
 # authority through medium and high-speed bends. Tyre force builds over a
 # relaxation length and longitudinal input consumes part of the friction circle.
 TYRE_GRIP = 2.04
-AERO_GRIP = 0.00023
+AERO_GRIP = 0.00053
 TYRE_RELAXATION_LENGTH = 3.0
 BRAKE_GRIP_USAGE = 0.78
 THROTTLE_GRIP_USAGE = 0.20
