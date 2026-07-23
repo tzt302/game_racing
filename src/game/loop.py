@@ -87,6 +87,13 @@ class GameLoop:
         self.lights_out_flash = 0.0
         self.lights_out_elapsed = 0.0
         self.player_has_started_lap = True
+        self.lap_start_reference_index = 0
+        self.live_delta = None
+        self.track_limit_warnings = 0
+        self.time_penalty = 0.0
+        self._outside_track_limits = False
+        self.penalty_message_time = 0.0
+        self.penalty_message = ""
         self._load_track()
 
     def run(self):
@@ -173,6 +180,13 @@ class GameLoop:
         self.lights_out_flash = 0.0
         self.lights_out_elapsed = 0.0
         self.player_has_started_lap = self.mode != "RACE VS AI"
+        self.lap_start_reference_index = player_idx
+        self.live_delta = None
+        self.track_limit_warnings = 0
+        self.time_penalty = 0.0
+        self._outside_track_limits = False
+        self.penalty_message_time = 0.0
+        self.penalty_message = ""
 
     def _place_on_grid(self, vehicle, grid_position):
         """Place a car on a two-column, five-row starting grid."""
@@ -334,6 +348,7 @@ class GameLoop:
                 self.lights_out = True
                 self.lights_out_flash = 1.0
                 self.lights_out_elapsed = 0.0
+                self.race_message_time = 0.0
             self.player.speed = 0.0
             for ai in self.ai_cars:
                 ai.speed = 0.0
@@ -346,6 +361,7 @@ class GameLoop:
         self.player.set_surface(player_surface)
         self.player.update(dt, self.input.steer, self.input.throttle, self.input.brake)
         self._apply_world_limits(self.player)
+        self._update_track_limits()
 
         if self.mode == "RACE VS AI":
             all_cars = [self.player] + self.ai_cars
@@ -367,6 +383,7 @@ class GameLoop:
 
         self.lap_timer += dt
         self.race_message_time = max(0.0, self.race_message_time - dt)
+        self.penalty_message_time = max(0.0, self.penalty_message_time - dt)
         count = len(self.track.center_points)
         sector_one, sector_two = self.track.sector_indices
         if self.current_sector == 1 and self._crossed_marker(self.last_player_idx, pi, sector_one, count):
@@ -389,13 +406,57 @@ class GameLoop:
                 self.session_best_lap = self.player_last_lap
                 self.session_fastest_driver = "YOU"
             self.lap_timer = 0.0
+            self.lap_start_reference_index = 0
             self.current_sector = 1
             if self.lap >= self.total_laps:
                 self.state = "results"
             else:
                 self.lap += 1
         self.last_player_idx = pi
+        self.live_delta = self._calculate_live_delta(pi)
         self.audio.update(self.player, cockpit=False)
+
+    def _update_track_limits(self):
+        _, _, distance = self.track.surface_at(self.player.x, self.player.y)
+        limit = self.track.width * 0.5 + cfg.KERB_WIDTH + 0.15
+        outside = distance > limit
+        if (
+            outside
+            and not self._outside_track_limits
+            and self.player.speed > 5.0
+            and self.lights_out
+        ):
+            self.track_limit_warnings += 1
+            self.penalty_message_time = 2.4
+            if self.track_limit_warnings >= 3:
+                self.track_limit_warnings = 0
+                self.time_penalty += 5.0
+                self.penalty_message = "5 SECOND TIME PENALTY"
+            else:
+                self.penalty_message = (
+                    f"TRACK LIMITS WARNING {self.track_limit_warnings}/3"
+                )
+        self._outside_track_limits = outside
+
+    def _benchmark_lap(self):
+        if self.session_best_lap < self.track.reference_lap_time:
+            return self.session_best_lap, self.session_fastest_driver
+        return self.track.reference_lap_time, self.track.reference_driver
+
+    def _calculate_live_delta(self, index):
+        if not self.player_has_started_lap or not self.track.reference_elapsed:
+            return None
+        reference = self.track.reference_elapsed
+        start = self.lap_start_reference_index % len(reference)
+        if index >= start:
+            target_elapsed = reference[index] - reference[start]
+        else:
+            target_elapsed = (
+                self.track.reference_lap_time - reference[start] + reference[index]
+            )
+        benchmark_lap, _ = self._benchmark_lap()
+        target_elapsed *= benchmark_lap / self.track.reference_lap_time
+        return self.lap_timer - target_elapsed
 
     @staticmethod
     def _crossed_marker(previous, current, marker, count):
@@ -487,21 +548,56 @@ class GameLoop:
                         second.speed = impact_speed
 
     def _race_position(self):
-        player_score = (
-            (self.lap - 1)
-            + self.player_progress
-            - getattr(self.player, "grid_position", 9) * 0.000001
-        )
+        player_score = self._player_race_score()
         ahead = 0
         for ai in self.ai_cars:
-            ai_score = (
-                max(0, ai.lap - 1)
-                + ai.progress
-                - getattr(ai, "grid_position", 0) * 0.000001
-            )
+            ai_score = self._ai_race_score(ai)
             if ai_score > player_score:
                 ahead += 1
         return ahead + 1
+
+    def _player_race_score(self):
+        benchmark_lap, _ = self._benchmark_lap()
+        return (
+            (self.lap - 1)
+            + self.player_progress
+            - self.time_penalty / max(benchmark_lap, 1.0)
+            - getattr(self.player, "grid_position", 9) * 0.000001
+        )
+
+    @staticmethod
+    def _ai_race_score(ai):
+        return (
+            max(0, ai.lap - 1)
+            + ai.progress
+            - getattr(ai, "grid_position", 0) * 0.000001
+        )
+
+    def _standings_payload(self):
+        benchmark_lap, _ = self._benchmark_lap()
+        player_score = self._player_race_score()
+        entries = [
+            {
+                "name": "YOU",
+                "score": player_score,
+                "gap": 0.0,
+                "color": CAR_LIVERIES[self.livery_index]["body"],
+                "player": True,
+            }
+        ]
+        for ai in self.ai_cars:
+            score = self._ai_race_score(ai)
+            entries.append(
+                {
+                    "name": ai.driver_name[:3],
+                    "score": score,
+                    "gap": (player_score - score) * benchmark_lap,
+                    "color": ai.color,
+                    "player": False,
+                }
+            )
+        entries.sort(key=lambda entry: entry["score"], reverse=True)
+        return entries
 
     def _timing_payload(self):
         return {
@@ -511,6 +607,8 @@ class GameLoop:
             "personal_best_lap": self.player_best_lap,
             "session_best_lap": self.session_best_lap,
             "fastest_driver": self.session_fastest_driver,
+            "delta": self.live_delta,
+            "delta_target": self._benchmark_lap()[1],
         }
 
     def _apply_world_limits(self, vehicle):
@@ -541,6 +639,7 @@ class GameLoop:
         p = self.track.center_points[idx]
         self.player.reset(p[0], p[1], p[2])
         self.last_player_idx = idx
+        self._outside_track_limits = False
 
     def _render(self):
         if self.state == "menu":
@@ -558,9 +657,13 @@ class GameLoop:
             )
         elif self.state == "results":
             best = self._fmt_time(self.player_best_lap)
+            lines = [f"BEST LAP  {best}"]
+            if self.time_penalty:
+                lines.append(f"TIME PENALTY  +{self.time_penalty:.1f}s")
+            lines.extend(["R / A  Race again", "M / B  Main menu"])
             self._render_overlay(
                 "SESSION COMPLETE",
-                [f"BEST LAP  {best}", "R / A  Race again", "M / B  Main menu"],
+                lines,
             )
 
     def _render_race_world(self):
@@ -591,6 +694,8 @@ class GameLoop:
             self.mode,
             self._timing_payload(),
         )
+        if self.mode == "RACE VS AI":
+            self._draw_leaderboard()
 
         if self.player_last_lap > 0:
             self._text(
@@ -613,8 +718,72 @@ class GameLoop:
                 self.font_s,
                 cfg.WHITE,
             )
+        if self.penalty_message_time > 0:
+            panel = pygame.Surface((390, 44), pygame.SRCALPHA)
+            panel.fill((85, 16, 12, 225))
+            self.screen.blit(panel, (cfg.WINDOW_WIDTH // 2 - 195, 158))
+            self._center_text(
+                self.screen,
+                self.penalty_message,
+                168,
+                self.font_m,
+                (255, 215, 205),
+            )
         if self.mode == "RACE VS AI" and (not self.lights_out or self.lights_out_flash > 0):
             self._draw_start_lights()
+
+    def _draw_leaderboard(self):
+        entries = self._standings_payload()
+        x, y, width = 14, 90, 278
+        row_height = 29
+        height = 56 + len(entries) * row_height + 47
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((5, 8, 11, 218))
+        self.screen.blit(panel, (x, y))
+        pygame.draw.rect(
+            self.screen, (62, 68, 75), (x, y, width, height), 1, border_radius=5
+        )
+        self._text(self.screen, x + 13, y + 9, "STANDINGS", self.font_m, cfg.WHITE)
+        self._text(
+            self.screen, x + 180, y + 15, "GAP TO YOU", self.font_s, cfg.HUD_LABEL
+        )
+        for position, entry in enumerate(entries, 1):
+            row_y = y + 43 + (position - 1) * row_height
+            if entry["player"]:
+                pygame.draw.rect(
+                    self.screen,
+                    (*entry["color"], 68),
+                    (x + 5, row_y - 2, width - 10, row_height - 2),
+                    border_radius=3,
+                )
+            pygame.draw.rect(
+                self.screen, entry["color"], (x + 10, row_y + 5, 5, 16)
+            )
+            self._text(
+                self.screen, x + 24, row_y + 2, f"{position:>2}", self.font_s, cfg.HUD_LABEL
+            )
+            self._text(
+                self.screen, x + 55, row_y + 2, entry["name"], self.font_s, cfg.WHITE
+            )
+            gap = "YOU" if entry["player"] else f"{entry['gap']:+.3f}"
+            gap_color = cfg.WHITE if entry["player"] else (
+                (42, 220, 112) if entry["gap"] >= 0.0 else (255, 88, 72)
+            )
+            self._text(
+                self.screen, x + 190, row_y + 2, gap, self.font_s, gap_color
+            )
+        footer_y = y + 49 + len(entries) * row_height
+        warnings = f"TRACK LIMITS  {self.track_limit_warnings}/3"
+        penalty = f"PENALTY  +{self.time_penalty:.0f}s"
+        self._text(self.screen, x + 13, footer_y, warnings, self.font_s, cfg.HUD_LABEL)
+        self._text(
+            self.screen,
+            x + 159,
+            footer_y,
+            penalty,
+            self.font_s,
+            (255, 170, 90) if self.time_penalty else cfg.HUD_LABEL,
+        )
 
     def _draw_start_lights(self):
         panel = pygame.Rect(cfg.WINDOW_WIDTH // 2 - 205, 98, 410, 102)

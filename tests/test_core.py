@@ -32,6 +32,15 @@ class TrackTests(unittest.TestCase):
                 self.assertLess(track.sector_indices[0], track.sector_indices[1])
                 self.assertEqual(len(track.reference_sector_times), 3)
                 self.assertGreater(track.reference_lap_time, 60.0)
+                self.assertEqual(
+                    len(track.reference_elapsed), len(track.center_points)
+                )
+                self.assertAlmostEqual(track.reference_elapsed[0], 0.0, places=3)
+                self.assertAlmostEqual(
+                    track.reference_elapsed[-1],
+                    track.reference_lap_time,
+                    places=2,
+                )
 
     def test_surface_layers_are_driveable_and_ordered(self):
         track = Track("monza")
@@ -165,6 +174,73 @@ class RaceFormatTests(unittest.TestCase):
         self.assertEqual(len(scales), 3)
         self.assertGreater(scales[0], scales[1])
         self.assertGreater(scales[1], scales[2])
+
+    def test_live_delta_compares_player_with_reference_point_time(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("monza")
+        game.player_has_started_lap = True
+        game.lap_start_reference_index = 0
+        game.session_best_lap = float("inf")
+        game.session_fastest_driver = "---"
+        index = 240
+        game.lap_timer = game.track.reference_elapsed[index] + 0.375
+        self.assertAlmostEqual(game._calculate_live_delta(index), 0.375, places=3)
+
+    def test_track_limits_count_excursions_and_penalize_third(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("monza")
+        game.player = Vehicle()
+        game.player.speed = 40.0
+        game.lights_out = True
+        game.track_limit_warnings = 0
+        game.time_penalty = 0.0
+        game._outside_track_limits = False
+        game.penalty_message_time = 0.0
+        game.penalty_message = ""
+        x, y, heading, _ = game.track.center_points[100]
+        nx, ny = -math.sin(heading), math.cos(heading)
+        outside = game.track.width * 0.5 + cfg.KERB_WIDTH + 1.0
+
+        for excursion in range(3):
+            game.player.x, game.player.y = x + nx * outside, y + ny * outside
+            game._update_track_limits()
+            game._update_track_limits()
+            if excursion < 2:
+                self.assertEqual(game.track_limit_warnings, excursion + 1)
+            game.player.x, game.player.y = x, y
+            game._update_track_limits()
+
+        self.assertEqual(game.track_limit_warnings, 0)
+        self.assertEqual(game.time_penalty, 5.0)
+        self.assertEqual(game.penalty_message, "5 SECOND TIME PENALTY")
+
+    def test_standings_include_player_and_all_nine_ai(self):
+        game = GameLoop.__new__(GameLoop)
+        game.track = Track("spa")
+        game.lap = 1
+        game.player_progress = 0.50
+        game.time_penalty = 0.0
+        game.livery_index = 0
+        game.session_best_lap = float("inf")
+        game.session_fastest_driver = "---"
+        game.player = Vehicle()
+        game.player.grid_position = 9
+        game.ai_cars = []
+        for index, profile in enumerate(AI_PROFILES):
+            ai = Vehicle()
+            ai.driver_name = profile["name"]
+            ai.color = profile["color"]
+            ai.grid_position = index
+            ai.lap = 1
+            ai.progress = 0.45 + index * 0.01
+            game.ai_cars.append(ai)
+
+        entries = game._standings_payload()
+        self.assertEqual(len(entries), 10)
+        self.assertEqual([entry["score"] for entry in entries], sorted(
+            (entry["score"] for entry in entries), reverse=True
+        ))
+        self.assertEqual(sum(entry["player"] for entry in entries), 1)
 
 
 if __name__ == "__main__":

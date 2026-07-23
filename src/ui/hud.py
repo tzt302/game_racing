@@ -86,6 +86,7 @@ class HUD:
         self._text(surf, legend_x + 44, 46, "BRAKE ZONE", self.fs)
         if timing:
             self._draw_timing(surf, timing, track)
+            self._draw_delta(surf, timing, track)
 
     def _pedal(self, surf, x, y, amount, label, color):
         pygame.draw.rect(surf, cfg.DARK_GRAY, (x, y, 34, 52), border_radius=4)
@@ -140,6 +141,20 @@ class HUD:
             self.fs,
             cfg.WHITE,
         )
+
+    def _draw_delta(self, surf, timing, track):
+        delta = timing.get("delta")
+        if delta is None:
+            return
+        x, y, width, height = 522, 88, 236, 58
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((5, 8, 11, 220))
+        surf.blit(panel, (x, y))
+        pygame.draw.rect(surf, track.accent, (x, y, width, height), 2, border_radius=5)
+        target = timing.get("delta_target") or "FASTEST"
+        self._text(surf, x + 12, y + 7, f"DELTA TO {target}", self.fs, cfg.HUD_LABEL)
+        color = (42, 220, 112) if delta <= 0.0 else (255, 88, 72)
+        self._text(surf, x + 12, y + 27, f"{delta:+.3f}", self.fm, color)
 
     @staticmethod
     def _format_lap(value):

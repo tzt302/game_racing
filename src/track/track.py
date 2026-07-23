@@ -54,6 +54,7 @@ class Track:
         self.reference_brake = []
         self.reference_rpm = []
         self.reference_elevation = []
+        self.reference_elapsed = []
         self.reference_driver = ""
         self.reference_lap_time = 0.0
         self.reference_sector_times = []
@@ -73,6 +74,12 @@ class Track:
         self.reference_brake = [bool(p[5]) for p in raw]
         self.reference_rpm = [int(p[6]) for p in raw]
         self.reference_elevation = [float(p[7]) if len(p) > 7 else 0.0 for p in raw]
+        self.reference_elapsed = [
+            float(p[8])
+            if len(p) > 8
+            else index / max(len(raw) - 1, 1) * float(telemetry["lap_time"])
+            for index, p in enumerate(raw)
+        ]
         self.reference_driver = telemetry["driver"]
         self.reference_lap_time = float(telemetry["lap_time"])
         self.reference_sector_times = [float(v) for v in telemetry["sector_times"]]

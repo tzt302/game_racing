@@ -104,6 +104,9 @@ def import_circuit(track_id: str, spec: dict) -> dict:
     brake = interpolate("Brake")
     time_values = np.array([value.total_seconds() for value in telemetry["Time"]], dtype=float)
     lap_time_axis = np.interp(sample_distance, source_distance, time_values)
+    lap_time_axis -= lap_time_axis[0]
+    official_lap_time = seconds(lap["LapTime"])
+    lap_time_axis *= official_lap_time / max(lap_time_axis[-1], 0.001)
 
     sector_one = seconds(lap["Sector1Time"])
     sector_two = seconds(lap["Sector2Time"])
@@ -122,6 +125,7 @@ def import_circuit(track_id: str, spec: dict) -> dict:
                 bool(brake[i] >= 0.5),
                 int(round(float(rpm[i]))),
                 round(float(z[i]), 2),
+                round(float(lap_time_axis[i]), 3),
             ]
         )
 
@@ -130,7 +134,7 @@ def import_circuit(track_id: str, spec: dict) -> dict:
         "event": session.event["EventName"],
         "session": "Qualifying",
         "driver": str(lap["Driver"]),
-        "lap_time": seconds(lap["LapTime"]),
+        "lap_time": official_lap_time,
         "sector_times": [
             sector_one,
             sector_two,
