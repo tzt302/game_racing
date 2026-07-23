@@ -6,9 +6,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 
 
@@ -17,6 +19,7 @@ LATEST_RELEASE_URL = (
     f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 )
 MAX_UPDATE_SIZE = 250 * 1024 * 1024
+UPDATE_HELPER_FLAG = "--apply-update"
 
 
 def version_tuple(value):
@@ -154,38 +157,19 @@ class AutoUpdater:
             self.status_text = "AUTO UPDATE: CHECK FAILED - RETRY NEXT START"
 
     def apply_on_exit(self):
-        """Launch a hidden helper that replaces this EXE after it exits."""
+        """Run the validated staged EXE as a tightly scoped update helper."""
         if not self.enabled or self.staged_path is None:
             return False
         if not self.staged_path.is_file():
             return False
 
-        source = _powershell_literal(str(self.staged_path))
-        target = _powershell_literal(str(self.executable))
-        command = (
-            f"$pidToWait={os.getpid()};"
-            "$process=Get-Process -Id $pidToWait -ErrorAction SilentlyContinue;"
-            "if($process){Wait-Process -Id $pidToWait -Timeout 30 "
-            "-ErrorAction SilentlyContinue};"
-            "for($attempt=0;$attempt -lt 20;$attempt++){"
-            "try{"
-            f"Copy-Item -LiteralPath '{source}' -Destination '{target}' -Force;"
-            f"Remove-Item -LiteralPath '{source}' -Force;"
-            f"Start-Process -FilePath '{target}';"
-            "exit 0"
-            "}catch{Start-Sleep -Milliseconds 500}"
-            "};exit 1"
-        )
         creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         subprocess.Popen(
             [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                command,
+                str(self.staged_path),
+                UPDATE_HELPER_FLAG,
+                str(self.executable),
+                str(os.getpid()),
             ],
             close_fds=True,
             creationflags=creation_flags,
@@ -193,5 +177,72 @@ class AutoUpdater:
         return True
 
 
-def _powershell_literal(value):
-    return value.replace("'", "''")
+def run_update_helper(arguments=None):
+    """Replace the old executable without invoking a shell or PowerShell."""
+    arguments = list(sys.argv[1:] if arguments is None else arguments)
+    if not arguments or arguments[0] != UPDATE_HELPER_FLAG:
+        return None
+    if (
+        os.name != "nt"
+        or not getattr(sys, "frozen", False)
+        or len(arguments) != 3
+    ):
+        return 2
+
+    source = Path(sys.executable).resolve()
+    target = Path(arguments[1]).resolve()
+    expected_source = target.with_suffix(".update.exe")
+    try:
+        parent_pid = int(arguments[2])
+    except ValueError:
+        return 2
+    if (
+        parent_pid <= 0
+        or source != expected_source
+        or target.suffix.lower() != ".exe"
+        or source.parent != target.parent
+    ):
+        return 2
+
+    _wait_for_process(parent_pid, 30_000)
+    for _ in range(30):
+        try:
+            shutil.copyfile(source, target)
+            break
+        except (OSError, PermissionError):
+            time.sleep(0.25)
+    else:
+        _write_update_error(target, "Unable to replace the previous executable.")
+        return 1
+
+    try:
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(
+            [str(target)],
+            close_fds=True,
+            creationflags=creation_flags,
+        )
+    except OSError as error:
+        _write_update_error(target, f"Unable to restart the game: {error}")
+        return 1
+    return 0
+
+
+def _wait_for_process(pid, timeout_ms):
+    import ctypes
+
+    synchronize = 0x00100000
+    handle = ctypes.windll.kernel32.OpenProcess(synchronize, False, pid)
+    if handle:
+        ctypes.windll.kernel32.WaitForSingleObject(handle, timeout_ms)
+        ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def _write_update_error(target, message):
+    try:
+        target.with_name("raceline_update_error.log").write_text(
+            message,
+            encoding="utf-8",
+        )
+    except OSError:
+        pass

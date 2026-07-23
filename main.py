@@ -16,6 +16,13 @@ else:
 sys.path.insert(0, os.path.join(BASE_DIR, "src"))
 sys.path.insert(0, BASE_DIR)
 
+# A validated staged copy can replace the previous EXE after that process
+# exits. This path deliberately avoids a shell or PowerShell invocation.
+if getattr(sys, "frozen", False) and "--apply-update" in sys.argv:
+    from updater import run_update_helper
+
+    sys.exit(run_update_helper())
+
 # Write crashes to a log file so packaged builds remain diagnosable.
 _log_path = os.path.join(APP_DIR, "raceline_error.log")
 
