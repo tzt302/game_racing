@@ -47,6 +47,21 @@ class TrackTests(unittest.TestCase):
                 surface, _, _ = track.surface_at(x + nx * offset, y + ny * offset)
                 self.assertEqual(surface, expected)
 
+    def test_circuits_are_not_mirrored_on_the_pygame_screen(self):
+        # These five circuits run clockwise in their standard map
+        # orientation. With Pygame's downward-positive Y axis that produces a
+        # positive shoelace area. A forgotten FastF1 Y-axis conversion flips
+        # every circuit and makes this value negative.
+        for track_id in TRACK_ORDER:
+            with self.subTest(track=track_id):
+                points = Track(track_id).center_points
+                signed_area = sum(
+                    point[0] * points[(index + 1) % len(points)][1]
+                    - points[(index + 1) % len(points)][0] * point[1]
+                    for index, point in enumerate(points)
+                )
+                self.assertGreater(signed_area, 0.0)
+
 
 class VehicleTests(unittest.TestCase):
     def test_high_speed_steering_has_less_lock(self):

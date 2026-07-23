@@ -1,5 +1,10 @@
 # 更新日志
 
+## v2.0.1 — Circuit Orientation and Camera Fix
+
+- 修正 FastF1 的 Y-up 坐标与 Pygame Y-down 屏幕坐标不一致造成的五条赛道镜像问题。
+- 按玩家最终反馈删除 Halo 与驾驶舱视角，只保留最原始的旋转俯视追踪视角。
+
 ## v2.0.0 — Telemetry Edition
 
 这是一次完整的驾驶、赛道和表现层升级。

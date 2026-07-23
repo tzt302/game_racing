@@ -78,7 +78,10 @@ def import_circuit(track_id: str, spec: dict) -> dict:
         return np.interp(sample_distance, source_distance, telemetry[column].to_numpy(dtype=float))
 
     x = circular_smooth(interpolate("X"))
-    y = circular_smooth(interpolate("Y"))
+    # FastF1 uses a Cartesian Y-up coordinate system, while Pygame displays
+    # positive Y downwards.  Flip Y once at import time so circuit maps are not
+    # mirrored in menus, the minimap, or world rendering.
+    y = -circular_smooth(interpolate("Y"))
     z = circular_smooth(interpolate("Z"))
     x -= x.mean()
     y -= y.mean()

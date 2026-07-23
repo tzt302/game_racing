@@ -20,7 +20,6 @@ CAR_LIVERIES = [
 ]
 MODES = ["TIME TRIAL", "RACE VS AI"]
 DIFFICULTIES = ["EASY", "NORMAL", "HARD"]
-VIEWS = ["HALO T-CAM", "COCKPIT 2.5D", "CHASE TOP-DOWN"]
 AI_PROFILES = [
     {"name": "NOVA", "skill": 0.96, "aggression": 0.74, "consistency": 0.96, "color": (55, 115, 245)},
     {"name": "APEX", "skill": 0.93, "aggression": 0.88, "consistency": 0.91, "color": (245, 130, 30)},
@@ -45,7 +44,6 @@ class GameLoop:
         self.track_index = 0
         self.mode_index = 0
         self.difficulty_index = 1
-        self.view_index = 0
         self.livery_index = 0
         self.menu_row = 0
         self.state = "menu"
@@ -169,14 +167,14 @@ class GameLoop:
                 key = pygame.K_RETURN
 
             if key == pygame.K_UP:
-                self.menu_row = (self.menu_row - 1) % 6
+                self.menu_row = (self.menu_row - 1) % 5
             elif key == pygame.K_DOWN:
-                self.menu_row = (self.menu_row + 1) % 6
+                self.menu_row = (self.menu_row + 1) % 5
             elif key in (pygame.K_LEFT, pygame.K_RIGHT):
                 direction = -1 if key == pygame.K_LEFT else 1
                 self._change_menu_value(direction)
             elif key in (pygame.K_RETURN, pygame.K_SPACE):
-                if self.menu_row == 5:
+                if self.menu_row == 4:
                     self.mode = MODES[self.mode_index]
                     self._load_track()
                     self.state = "guide"
@@ -196,8 +194,6 @@ class GameLoop:
             for ai in self.ai_cars:
                 ai.difficulty = DIFFICULTIES[self.difficulty_index]
         elif self.menu_row == 3:
-            self.view_index = (self.view_index + direction) % len(VIEWS)
-        elif self.menu_row == 4:
             self.livery_index = (self.livery_index + direction) % len(CAR_LIVERIES)
 
     def _handle_guide(self, events):
@@ -226,8 +222,6 @@ class GameLoop:
                     self.show_racing_line = not self.show_racing_line
                 elif event.key == pygame.K_b:
                     self.show_brake_zones = not self.show_brake_zones
-                elif event.key in (pygame.K_c, pygame.K_v):
-                    self.view_index = (self.view_index + 1) % len(VIEWS)
             elif event.type == pygame.JOYBUTTONDOWN and event.button == 7:
                 self.state = "paused"
         if self.state != "race":
@@ -323,7 +317,7 @@ class GameLoop:
             else:
                 self.lap += 1
         self.last_player_idx = pi
-        self.audio.update(self.player, cockpit=self.view_index < 2)
+        self.audio.update(self.player, cockpit=False)
 
     @staticmethod
     def _crossed_marker(previous, current, marker, count):
@@ -484,23 +478,20 @@ class GameLoop:
             )
 
     def _render_race_world(self):
-        if self.view_index < 2:
-            self._draw_cockpit_world()
-        else:
-            self._draw_grass()
-            self._draw_track()
-            if self.show_racing_line:
-                self._draw_racing_line()
-            if self.show_brake_zones:
-                self._draw_brake_markers()
-            self._draw_start_line()
-            self._draw_sector_lines()
+        self._draw_grass()
+        self._draw_track()
+        if self.show_racing_line:
+            self._draw_racing_line()
+        if self.show_brake_zones:
+            self._draw_brake_markers()
+        self._draw_start_line()
+        self._draw_sector_lines()
 
-            livery = CAR_LIVERIES[self.livery_index]
-            self._draw_f1_car(self.player, livery["body"], livery["accent"], "")
-            if self.mode == "RACE VS AI":
-                for ai in self.ai_cars:
-                    self._draw_f1_car(ai, ai.color, (245, 245, 245), ai.driver_name)
+        livery = CAR_LIVERIES[self.livery_index]
+        self._draw_f1_car(self.player, livery["body"], livery["accent"], "")
+        if self.mode == "RACE VS AI":
+            for ai in self.ai_cars:
+                self._draw_f1_car(ai, ai.color, (245, 245, 245), ai.driver_name)
 
         self._draw_minimap()
         position = self._race_position() if self.mode == "RACE VS AI" else 1
@@ -655,10 +646,7 @@ class GameLoop:
 
         if self.mode == "RACE VS AI":
             self._draw_cockpit_rivals()
-        if self.view_index == 0:
-            self._draw_tcam_frame()
-        else:
-            self._draw_cockpit_frame()
+        self._draw_tcam_frame()
 
     def _cockpit_sections(self):
         current_idx, _ = self.track.find_nearest(self.player.x, self.player.y)
@@ -1055,7 +1043,6 @@ class GameLoop:
             ("CIRCUIT", f"{self.track.name}  /  {self.track.country}"),
             ("MODE", MODES[self.mode_index]),
             ("AI DIFFICULTY", DIFFICULTIES[self.difficulty_index]),
-            ("CAMERA", VIEWS[self.view_index]),
             ("LIVERY", CAR_LIVERIES[self.livery_index]["name"]),
             ("START SESSION", "PRESS ENTER / A"),
         ]
@@ -1133,7 +1120,7 @@ class GameLoop:
             self.track.accent,
         )
         cards = [
-            ("1  CONTROL", "W / ↑ throttle     S / ↓ brake     A D / ← → steer\nController: left stick + linear LT / RT     C changes camera"),
+            ("1  CONTROL", "W / ↑ throttle     S / ↓ brake     A D / ← → steer\nController: left stick + linear LT / RT"),
             ("2  READ THE LINE", "CYAN = full throttle     YELLOW = lift / prepare\nRED = brake now; target speed is shown at the marker"),
             ("3  USE THE ROAD", "Red-white kerb is driveable but unsettles the car.\nRunoff and grass reduce grip; barriers return the car safely."),
             ("4  DRIVE SMOOTHLY", "Steering lock reduces with speed. Brake in a straight line,\nrelease the brake, then turn toward the apex."),
