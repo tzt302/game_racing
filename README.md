@@ -131,6 +131,15 @@ python -m unittest discover -s tests -v
 pyinstaller --noconfirm --clean RacingLinePro-portable.spec
 ```
 
+从后续版本开始，Windows 主发布物改为标准安装包，便携 ZIP 作为备用。安装包以目录式构建为输入，不包含自动下载或替换自身的更新器：
+
+```powershell
+winget install --id JRSoftware.InnoSetup --exact
+powershell -ExecutionPolicy Bypass -File tools/build_windows_installer.ps1
+```
+
+构建脚本会在生成安装包后调用 Microsoft Defender 扫描；扫描未通过时必须停止发布。项目尚未配置商业代码签名证书，因此 Windows 仍可能显示“未知发布者”，但不应关闭安全软件绕过明确的病毒检测。
+
 重新导入 FastF1 遥测（仅开发者需要）：
 
 ```powershell
