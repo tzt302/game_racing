@@ -48,6 +48,40 @@ class GameLoop:
         self.cam_x = p[0] - cfg.WINDOW_WIDTH / (2 * cfg.PX_PER_M)
         self.cam_y = p[1] - cfg.WINDOW_HEIGHT * cfg.LOOK_AHEAD / cfg.PX_PER_M
 
+
+    def run(self):
+        running = True
+        dt = 1.0 / cfg.FPS
+        while running:
+            events = pygame.event.get()
+            for e in events:
+                if e.type == pygame.QUIT:
+                    running = False
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_ESCAPE:
+                        self.paused = not self.paused
+                    if e.key == pygame.K_r and self.race_over:
+                        self.restart()
+            if not running:
+                break
+            if not self.paused and not self.race_over:
+                self.input.update(events)
+                self._update(dt)
+            else:
+                self.input.update(events)
+            self._render()
+            pygame.display.flip()
+            dt = self.clock.tick(cfg.FPS) / 1000.0
+
+    def restart(self):
+        self.lap = 0
+        self.race_over = False
+        self.lap_timer = 0.0
+        self.player_best_lap = float('inf')
+        self.player_last_lap = 0.0
+        self.lap_start_idx = 0
+        self._reset_positions()
+
     def _update(self, dt):
         dt = min(dt, 0.05)
 
