@@ -2,6 +2,12 @@
 
 使用 Python 与 Pygame 制作的轻量级方程式赛车游戏。
 
+## 实录宣传视频
+
+[![Racing Line Pro v2.3.2 实机宣传视频](assets/promo/racing_line_pro_v232_preview.webp)](https://github.com/tzt302/game_racing/releases/download/v2.3.2/RacingLinePro-v2.3.2-Promo.mp4)
+
+点击动态预览可观看 1080p 实机宣传片：蒙扎十车正赛、五盏红灯、真实大奖赛发动机实录、实时 Delta、AI 时间差和赛道限制系统。
+
 ## 核心功能
 
 - **实时 Delta**：逐点比较当前圈与最快参考圈，绿色代表领先、红色代表落后。
